@@ -255,13 +255,29 @@ def extract_video_preview_urls(attachments: List[Dict[str, Any]]) -> List[str]:
     return result
 
 
-def build_post_caption(text: str) -> str:
+def get_first_video_link(attachments: List[Dict[str, Any]]) -> str | None:
+    """Получить прямую ссылку на первое видео из вложений."""
+    for a in attachments:
+        if a.get("type") != "video":
+            continue
+        video = a.get("video") or {}
+        owner_id = video.get("owner_id")
+        video_id = video.get("id")
+        if owner_id is None or video_id is None:
+            continue
+        return f"https://vk.com/video{owner_id}_{video_id}"
+    return None
+
+
+def build_post_caption(text: str, video_link: str | None = None) -> str:
     """Формирование подписи для Telegram.
 
     По требованиям берём текст поста почти как есть,
     но вырезаем служебные хвосты вида:
     - "Наш Telegram - t.me/primetennis"
-    - "✅ Поддержать группу: tips.tips/000457857"
+    - "✅ Поддержать группу: ..."
+    - "tips.tips/000457857"
+    А также при наличии добавляем в конец прямую ссылку на видео.
     """
     raw = (text or "").strip()
     if not raw:
@@ -278,7 +294,7 @@ def build_post_caption(text: str) -> str:
             continue
         if "t.me/primetennis".lower() in low:
             continue
-        if "поддержать группу" in low and "tips.tips/000457857" in low:
+        if "поддержать группу" in low:
             continue
         if "tips.tips/000457857" in low:
             continue
@@ -286,6 +302,14 @@ def build_post_caption(text: str) -> str:
         cleaned_lines.append(line)
 
     caption = "\n".join(cleaned_lines).strip()
+
+    # Добавляем ссылку на видео отдельной строкой
+    if video_link:
+        if caption:
+            caption = f"{caption}\n\nВидео: {video_link}"
+        else:
+            caption = f"Видео: {video_link}"
+
     if not caption:
         return "Теннисная трансляция"
     return caption
@@ -338,7 +362,8 @@ def process_posts() -> None:
             logging.info("Пост %s пропущен: не удалось получить превью видео.", post_id)
             continue
 
-        caption = build_post_caption(text)
+        video_link = get_first_video_link(attachments)
+        caption = build_post_caption(text, video_link)
 
         try:
             send_telegram_media_group(photos, caption)
