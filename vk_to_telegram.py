@@ -258,12 +258,37 @@ def extract_video_preview_urls(attachments: List[Dict[str, Any]]) -> List[str]:
 def build_post_caption(text: str) -> str:
     """Формирование подписи для Telegram.
 
-    По требованиям берём текст поста как есть.
+    По требованиям берём текст поста почти как есть,
+    но вырезаем служебные хвосты вида:
+    - "Наш Telegram - t.me/primetennis"
+    - "✅ Поддержать группу: tips.tips/000457857"
     """
-    text = (text or "").strip()
-    if not text:
+    raw = (text or "").strip()
+    if not raw:
         return "Теннисная трансляция"
-    return text
+
+    lines = [line.rstrip() for line in raw.splitlines()]
+    cleaned_lines: List[str] = []
+
+    for line in lines:
+        low = line.lower()
+
+        # жёсткие исключения по подстрокам
+        if "наш telegram - t.me/primetennis".lower() in low:
+            continue
+        if "t.me/primetennis".lower() in low:
+            continue
+        if "поддержать группу" in low and "tips.tips/000457857" in low:
+            continue
+        if "tips.tips/000457857" in low:
+            continue
+
+        cleaned_lines.append(line)
+
+    caption = "\n".join(cleaned_lines).strip()
+    if not caption:
+        return "Теннисная трансляция"
+    return caption
 
 
 # ==========================
