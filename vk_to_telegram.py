@@ -405,19 +405,19 @@ def main() -> None:
 
     # Простая проверка заполненности конфигурации
     # Пробуем загрузить из .env еще раз (на случай если файл изменился)
+    global VK_TOKEN, TELEGRAM_BOT_TOKEN
+    
     vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
     if not vk_token or vk_token == "VK_ACCESS_TOKEN":
         logging.error("Не задан VK_TOKEN. Добавьте VK_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
     # Используем токен из переменной или из файла
-    global VK_TOKEN
     VK_TOKEN = vk_token
     
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
     if not telegram_token or telegram_token == "TELEGRAM_BOT_TOKEN":
         logging.error("Не задан TELEGRAM_BOT_TOKEN. Добавьте TELEGRAM_BOT_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
-    global TELEGRAM_BOT_TOKEN
     TELEGRAM_BOT_TOKEN = telegram_token
 
     # Проверяем, запущен ли скрипт как сервис (через systemd)
