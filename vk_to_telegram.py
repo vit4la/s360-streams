@@ -41,7 +41,9 @@ if _env_file.exists():
 
 # Токен VK с правами wall, groups
 # В боевой среде лучше хранить его в переменной окружения или .env
-VK_TOKEN = os.getenv("VK_TOKEN", "VK_ACCESS_TOKEN")
+# Если токен задан в .env или переменной окружения, используем его
+# Иначе можно задать напрямую здесь (для обратной совместимости)
+VK_TOKEN = os.getenv("VK_TOKEN") or "VK_ACCESS_TOKEN"  # Замените на реальный токен если нет в .env
 
 # Версия VK API
 VK_API_VERSION = "5.199"
@@ -400,9 +402,14 @@ def main() -> None:
     setup_logging()
 
     # Простая проверка заполненности конфигурации
-    if not VK_TOKEN or VK_TOKEN == "VK_ACCESS_TOKEN":
-        logging.error("Не задан VK_TOKEN. Откройте vk_to_telegram.py и заполните CONFIG.")
+    # Пробуем загрузить из .env еще раз (на случай если файл изменился)
+    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
+    if not vk_token or vk_token == "VK_ACCESS_TOKEN":
+        logging.error("Не задан VK_TOKEN. Добавьте VK_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
+    # Используем токен из переменной или из файла
+    global VK_TOKEN
+    VK_TOKEN = vk_token
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "TELEGRAM_BOT_TOKEN":
         logging.error("Не задан TELEGRAM_BOT_TOKEN. Откройте vk_to_telegram.py и заполните CONFIG.")
         return
