@@ -25,9 +25,23 @@ import requests
 # CONFIG — ЗАПОЛНИТЬ ПЕРЕД ЗАПУСКОМ
 # ==========================
 
+# Загружаем переменные из .env файла, если он существует
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    with open(_env_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                # Убираем кавычки если есть
+                value = value.strip('"\'')
+                # Устанавливаем переменную окружения только если она еще не установлена
+                if key not in os.environ:
+                    os.environ[key] = value
+
 # Токен VK с правами wall, groups
 # В боевой среде лучше хранить его в переменной окружения или .env
-VK_TOKEN = "VK_ACCESS_TOKEN"
+VK_TOKEN = os.getenv("VK_TOKEN", "VK_ACCESS_TOKEN")
 
 # Версия VK API
 VK_API_VERSION = "5.199"
@@ -41,8 +55,8 @@ POSTS_LIMIT = 20
 
 # Telegram
 # В боевой среде лучше хранить его в переменной окружения или .env
-TELEGRAM_BOT_TOKEN = "TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = -4999682913  # id вашей TG-группы
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "-4999682913"))
 
 # Файл для хранения состояния (последний отправленный post_id)
 STATE_FILE = Path("vk_last_post_state.json")
