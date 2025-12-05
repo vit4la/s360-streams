@@ -1,3 +1,14 @@
+# Telegram Bot API (python-telegram-bot)
+python-telegram-bot>=20.0
+
+# Telethon для юзер-бота
+telethon>=1.34.0
+
+# OpenAI API для GPT
+openai>=1.0.0
+
+# Для работы с базой данных SQLite (встроена в Python, но можно добавить для совместимости)
+# sqlite3 встроен в Python
+
+# Для HTTP запросов (если понадобится)
 requests>=2.31.0
-
-

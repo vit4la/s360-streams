@@ -2,7 +2,28 @@ venv/
 __pycache__/
 *.pyc
 
+# Старые файлы проекта
 vk_last_post_state.json
+
+# Конфигурация и секреты
 .env
+# config_moderation.py - НЕ игнорируем, так как это шаблон конфига
+
+# База данных SQLite
+*.db
+*.db-journal
+
+# Сессии Telethon
+*.session
+*.session-journal
+
+# Логи
+logs/
+*.log
+
+# Временные файлы
+*.tmp
+*.bak
+
 
 
