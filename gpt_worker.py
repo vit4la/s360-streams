@@ -34,23 +34,11 @@ class GPTWorker:
         client_kwargs = {"api_key": config.OPENAI_API_KEY}
         
         if config.OPENAI_PROXY:
-            # Используем httpx с прокси
-            # httpx принимает прокси как строку или словарь
-            try:
-                # Пробуем создать клиент с прокси
-                http_client = httpx.Client(
-                    proxies=config.OPENAI_PROXY,
-                    timeout=60.0,
-                )
-                client_kwargs["http_client"] = http_client
-                logger.info("OpenAI клиент настроен с прокси: %s", config.OPENAI_PROXY)
-            except TypeError as e:
-                # Если не поддерживается proxies, используем переменные окружения
-                logger.warning("httpx.Client не поддерживает proxies напрямую, используем переменные окружения")
-                import os
-                os.environ["HTTP_PROXY"] = config.OPENAI_PROXY
-                os.environ["HTTPS_PROXY"] = config.OPENAI_PROXY
-                logger.info("Прокси установлен через переменные окружения: %s", config.OPENAI_PROXY)
+            # Используем переменные окружения для прокси (OpenAI SDK автоматически их подхватывает)
+            import os
+            os.environ["HTTP_PROXY"] = config.OPENAI_PROXY
+            os.environ["HTTPS_PROXY"] = config.OPENAI_PROXY
+            logger.info("Прокси установлен через переменные окружения: %s", config.OPENAI_PROXY)
         else:
             logger.info("OpenAI клиент настроен без прокси")
         
