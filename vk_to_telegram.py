@@ -25,6 +25,8 @@ import requests
 # CONFIG — ЗАПОЛНИТЬ ПЕРЕД ЗАПУСКОМ
 # ==========================
 
+import os
+
 # Загружаем переменные из .env файла, если он существует
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
