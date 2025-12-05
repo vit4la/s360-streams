@@ -34,11 +34,20 @@ class GPTWorker:
         client_kwargs = {"api_key": config.OPENAI_API_KEY}
         
         if config.OPENAI_PROXY:
-            # Используем переменные окружения для прокси (OpenAI SDK автоматически их подхватывает)
+            # Используем переменные окружения для прокси
+            # Если прокси в формате http://, конвертируем в socks5:// если нужно
             import os
-            os.environ["HTTP_PROXY"] = config.OPENAI_PROXY
-            os.environ["HTTPS_PROXY"] = config.OPENAI_PROXY
-            logger.info("Прокси установлен через переменные окружения: %s", config.OPENAI_PROXY)
+            proxy_url = config.OPENAI_PROXY
+            
+            # Если прокси начинается с http://, но это SOCKS5, меняем на socks5://
+            if proxy_url.startswith("http://"):
+                # Заменяем http:// на socks5:// для SOCKS5 прокси
+                proxy_url = proxy_url.replace("http://", "socks5://", 1)
+                logger.info("Конвертирован HTTP прокси в SOCKS5: %s", proxy_url)
+            
+            os.environ["HTTP_PROXY"] = proxy_url
+            os.environ["HTTPS_PROXY"] = proxy_url
+            logger.info("Прокси установлен через переменные окружения: %s", proxy_url)
         else:
             logger.info("OpenAI клиент настроен без прокси")
         

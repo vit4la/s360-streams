@@ -74,7 +74,8 @@ TARGET_CHANNEL_IDS = [
 # ВАЖНО: Не коммитьте реальный ключ в Git! Используйте переменную окружения или .env файл
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-your-api-key-here")
 
-# Прокси для OpenAI API (если нужен, формат: http://user:pass@host:port или http://host:port)
+# Прокси для OpenAI API (если нужен, формат: socks5://user:pass@host:port или http://user:pass@host:port)
+# Для SOCKS5 используй формат: socks5://user:pass@host:port
 # Оставь пустым если прокси не нужен
 OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")
 
