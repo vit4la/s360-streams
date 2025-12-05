@@ -1,0 +1,22 @@
+[Unit]
+Description=VK to Telegram Posts Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/s360-streams
+EnvironmentFile=/root/s360-streams/.env
+Environment="SYSTEMD_SERVICE=1"
+# Используем python3 из системы или venv
+ExecStart=/usr/bin/python3 /root/s360-streams/vk_to_telegram.py
+# Или если используется venv:
+# ExecStart=/root/s360-streams/venv/bin/python /root/s360-streams/vk_to_telegram.py
+Restart=always
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

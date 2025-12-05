@@ -393,11 +393,35 @@ def main() -> None:
         logging.error("Не задан TELEGRAM_BOT_TOKEN. Откройте vk_to_telegram.py и заполните CONFIG.")
         return
 
-    try:
-        process_posts()
-    except Exception:
-        # По требованиям: просто логируем, без доп. уведомлений
-        logging.exception("Необработанная ошибка при обработке постов.")
+    # Проверяем, запущен ли скрипт как сервис (через systemd)
+    # Если да, работаем в цикле. Если нет (запуск вручную), выполняем один раз
+    import os
+    is_service = os.getenv("SYSTEMD_SERVICE", "0") == "1"
+    
+    if is_service:
+        # Режим сервиса: работаем в цикле
+        import time
+        CHECK_INTERVAL = 15 * 60  # 15 минут в секундах
+        
+        logging.info("Запуск в режиме сервиса. Интервал проверки: %s минут", CHECK_INTERVAL // 60)
+        
+        while True:
+            try:
+                process_posts()
+            except Exception:
+                # По требованиям: просто логируем, без доп. уведомлений
+                logging.exception("Необработанная ошибка при обработке постов.")
+            
+            # Ждем перед следующей проверкой
+            logging.debug("Ожидание %s секунд до следующей проверки...", CHECK_INTERVAL)
+            time.sleep(CHECK_INTERVAL)
+    else:
+        # Режим одноразового запуска (для cron или ручного запуска)
+        try:
+            process_posts()
+        except Exception:
+            # По требованиям: просто логируем, без доп. уведомлений
+            logging.exception("Необработанная ошибка при обработке постов.")
 
 
 if __name__ == "__main__":
