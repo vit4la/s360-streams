@@ -425,7 +425,6 @@ def main() -> None:
 
     # Проверяем, запущен ли скрипт как сервис (через systemd)
     # Если да, работаем в цикле. Если нет (запуск вручную), выполняем один раз
-    import os
     is_service = os.getenv("SYSTEMD_SERVICE", "0") == "1"
     
     if is_service:
