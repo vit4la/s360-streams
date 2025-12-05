@@ -760,6 +760,8 @@ class ModerationBot:
                     e,
                     exc_info=True,
                 )
+                # Продолжаем публикацию в другие каналы, даже если один не удался
+                continue
 
         # Логируем результат
         if published_count > 0:
