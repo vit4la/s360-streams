@@ -485,7 +485,7 @@ class ModerationBot:
             return
 
         # Получаем file_id картинки из исходного поста
-        # Делаем forwardMessage из исходного канала в личку оператора, чтобы получить file_id
+        # Пробуем переслать сообщение из исходного канала в личку оператора, чтобы получить file_id
         source_channel_id = draft.get("channel_id")
         source_message_id = draft.get("message_id")
         
@@ -493,8 +493,11 @@ class ModerationBot:
             await query.edit_message_text("❌ Не удалось определить исходный пост.")
             return
 
+        photo_file_id = None
+        
         try:
             # Пересылаем сообщение в личку оператора, чтобы получить file_id
+            # Это работает даже если бот не админ в канале, если канал публичный
             forwarded = await self.app.bot.forward_message(
                 chat_id=user_id,
                 from_chat_id=source_channel_id,
@@ -502,25 +505,30 @@ class ModerationBot:
             )
             
             # Извлекаем file_id картинки из пересланного сообщения
-            photo_file_id = None
             if forwarded.photo:
                 photo_file_id = forwarded.photo[-1].file_id
             elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
                 photo_file_id = forwarded.document.file_id
             
-            if not photo_file_id:
-                await query.edit_message_text("❌ У исходного поста нет картинки.")
-                return
-
             # Удаляем пересланное сообщение
             try:
                 await self.app.bot.delete_message(chat_id=user_id, message_id=forwarded.message_id)
             except Exception:
                 pass  # Игнорируем ошибку удаления
-
+                
         except Exception as e:
             logger.error("Ошибка при получении картинки из исходного поста: %s", e, exc_info=True)
-            await query.edit_message_text("❌ Не удалось получить картинку из исходного поста. Убедитесь, что бот имеет доступ к исходному каналу.")
+            await query.edit_message_text(
+                "❌ Не удалось получить картинку из исходного поста.\n"
+                "Возможные причины:\n"
+                "• Канал приватный и бот не имеет доступа\n"
+                "• В исходном посте нет картинки\n\n"
+                "Попробуйте прикрепить картинку вручную."
+            )
+            return
+        
+        if not photo_file_id:
+            await query.edit_message_text("❌ У исходного поста нет картинки. Попробуйте прикрепить картинку вручную.")
             return
 
         _, selected_channels = self.publishing_states[user_id]
