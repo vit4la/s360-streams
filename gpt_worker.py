@@ -35,12 +35,9 @@ class GPTWorker:
         
         if config.OPENAI_PROXY:
             # Используем httpx с прокси
-            # httpx требует прокси в формате словаря или строки для всех протоколов
+            # httpx требует прокси в формате словаря
             http_client = httpx.Client(
-                proxies={
-                    "http://": config.OPENAI_PROXY,
-                    "https://": config.OPENAI_PROXY,
-                },
+                proxies=config.OPENAI_PROXY,  # httpx принимает строку или словарь
                 timeout=60.0,
             )
             client_kwargs["http_client"] = http_client
