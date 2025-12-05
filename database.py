@@ -42,12 +42,19 @@ class Database:
                 channel_id TEXT NOT NULL,
                 message_id INTEGER NOT NULL,
                 text_original TEXT NOT NULL,
+                photo_file_id TEXT,
                 date TIMESTAMP NOT NULL,
                 status TEXT NOT NULL DEFAULT 'new',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(channel_id, message_id)
             )
         """)
+        
+        # Добавляем колонку photo_file_id если её нет (для существующих БД)
+        try:
+            cursor.execute("ALTER TABLE source_posts ADD COLUMN photo_file_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
 
         # Таблица черновиков для модерации
         cursor.execute("""
@@ -91,6 +98,7 @@ class Database:
         message_id: int,
         text_original: str,
         date: datetime,
+        photo_file_id: Optional[str] = None,
     ) -> Optional[int]:
         """Добавить исходный пост в БД.
 
@@ -99,6 +107,7 @@ class Database:
             message_id: ID сообщения
             text_original: Оригинальный текст поста
             date: Дата поста
+            photo_file_id: file_id картинки из поста (опционально)
 
         Returns:
             ID созданного поста или None, если пост уже существует
@@ -108,9 +117,9 @@ class Database:
 
         try:
             cursor.execute("""
-                INSERT INTO source_posts (channel_id, message_id, text_original, date, status)
-                VALUES (?, ?, ?, ?, 'new')
-            """, (channel_id, str(message_id), text_original, date))
+                INSERT INTO source_posts (channel_id, message_id, text_original, photo_file_id, date, status)
+                VALUES (?, ?, ?, ?, ?, 'new')
+            """, (channel_id, str(message_id), text_original, photo_file_id, date))
             post_id = cursor.lastrowid
             conn.commit()
             logger.debug("Добавлен исходный пост: channel_id=%s, message_id=%s, id=%s", 
@@ -231,6 +240,7 @@ class Database:
                 s.channel_id,
                 s.message_id,
                 s.text_original,
+                s.photo_file_id,
                 s.date as source_date
             FROM draft_posts d
             JOIN source_posts s ON d.source_post_id = s.id
@@ -254,6 +264,7 @@ class Database:
                 "channel_id": row["channel_id"],
                 "message_id": row["message_id"],
                 "text_original": row["text_original"],
+                "photo_file_id": row["photo_file_id"],
                 "source_date": row["source_date"],
             })
 
@@ -284,7 +295,8 @@ class Database:
                 d.target_message_id,
                 s.channel_id,
                 s.message_id,
-                s.text_original
+                s.text_original,
+                s.photo_file_id
             FROM draft_posts d
             JOIN source_posts s ON d.source_post_id = s.id
             WHERE d.id = ?
@@ -296,7 +308,7 @@ class Database:
         if not row:
             return None
 
-        return {
+        result = {
             "id": row["id"],
             "source_post_id": row["source_post_id"],
             "title": row["title"],
@@ -310,6 +322,10 @@ class Database:
             "message_id": row["message_id"],
             "text_original": row["text_original"],
         }
+        # Добавляем photo_file_id если есть
+        if "photo_file_id" in row.keys():
+            result["photo_file_id"] = row["photo_file_id"]
+        return result
 
     def update_draft_post(
         self,

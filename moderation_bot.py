@@ -275,6 +275,12 @@ class ModerationBot:
         elif action == "publish_no_photo":
             draft_id = int(parts[1])
             await self._handle_publish_no_photo(query, draft_id)
+        elif action == "publish_source_photo":
+            draft_id = int(parts[1])
+            await self._handle_publish_source_photo(query, draft_id)
+        elif action == "publish_custom_photo":
+            draft_id = int(parts[1])
+            await self._handle_publish_custom_photo(query, draft_id)
         else:
             await query.edit_message_text("❌ Неизвестное действие.")
 
@@ -288,12 +294,23 @@ class ModerationBot:
         if len(config.TARGET_CHANNEL_IDS) == 1:
             target_channel = config.TARGET_CHANNEL_IDS[0]
             self.publishing_states[user_id] = (draft_id, [target_channel])
+            
+            # Проверяем есть ли исходная картинка
+            source_photo_file_id = draft.get("photo_file_id")
+            
+            keyboard = []
+            if source_photo_file_id:
+                keyboard.append([
+                    InlineKeyboardButton("🖼️ С исходной картинкой", callback_data=f"publish_source_photo:{draft_id}")
+                ])
+            keyboard.append([
+                InlineKeyboardButton("📸 Прикрепить свою", callback_data=f"publish_custom_photo:{draft_id}"),
+                InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
+            ])
+            
             await query.edit_message_text(
-                "📸 Если нужно, отправьте картинку одним сообщением.\n"
-                "Если картинка не нужна — нажмите 'Без картинки'.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
-                ]]),
+                "📸 Выберите вариант публикации:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return
 
@@ -328,12 +345,23 @@ class ModerationBot:
         user_id = query.from_user.id
         self.publishing_states[user_id] = (draft_id, [channel_id])
 
+        # Проверяем есть ли исходная картинка
+        draft = self.db.get_draft_post(draft_id)
+        source_photo_file_id = draft.get("photo_file_id") if draft else None
+        
+        keyboard = []
+        if source_photo_file_id:
+            keyboard.append([
+                InlineKeyboardButton("🖼️ С исходной картинкой", callback_data=f"publish_source_photo:{draft_id}")
+            ])
+        keyboard.append([
+            InlineKeyboardButton("📸 Прикрепить свою", callback_data=f"publish_custom_photo:{draft_id}"),
+            InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
+        ])
+
         await query.edit_message_text(
-            "📸 Если нужно, отправьте картинку одним сообщением.\n"
-            "Если картинка не нужна — нажмите 'Без картинки'.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
-            ]]),
+            "📸 Выберите вариант публикации:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
     async def _handle_multiple_channel_selection(
@@ -424,11 +452,97 @@ class ModerationBot:
             await query.edit_message_text("❌ Выберите хотя бы один канал.")
             return
 
+        # Проверяем есть ли исходная картинка
+        draft = self.db.get_draft_post(draft_id)
+        source_photo_file_id = draft.get("photo_file_id") if draft else None
+        
+        keyboard = []
+        if source_photo_file_id:
+            keyboard.append([
+                InlineKeyboardButton("🖼️ С исходной картинкой", callback_data=f"publish_source_photo:{draft_id}")
+            ])
+        keyboard.append([
+            InlineKeyboardButton("📸 Прикрепить свою", callback_data=f"publish_custom_photo:{draft_id}"),
+            InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
+        ])
+        
         await query.edit_message_text(
-            "📸 Если нужно, отправьте картинку одним сообщением.\n"
-            "Если картинка не нужна — нажмите 'Без картинки'.",
+            "📸 Выберите вариант публикации:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    async def _handle_publish_source_photo(self, query, draft_id: int) -> None:
+        """Опубликовать с исходной картинкой."""
+        user_id = query.from_user.id
+        
+        if user_id not in self.publishing_states:
+            await query.edit_message_text("❌ Ошибка: состояние потеряно.")
+            return
+
+        draft = self.db.get_draft_post(draft_id)
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+
+        # Получаем file_id картинки из исходного поста
+        # Делаем forwardMessage из исходного канала в личку оператора, чтобы получить file_id
+        source_channel_id = draft.get("channel_id")
+        source_message_id = draft.get("message_id")
+        
+        if not source_channel_id or not source_message_id:
+            await query.edit_message_text("❌ Не удалось определить исходный пост.")
+            return
+
+        try:
+            # Пересылаем сообщение в личку оператора, чтобы получить file_id
+            forwarded = await self.app.bot.forward_message(
+                chat_id=user_id,
+                from_chat_id=source_channel_id,
+                message_id=source_message_id,
+            )
+            
+            # Извлекаем file_id картинки из пересланного сообщения
+            photo_file_id = None
+            if forwarded.photo:
+                photo_file_id = forwarded.photo[-1].file_id
+            elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
+                photo_file_id = forwarded.document.file_id
+            
+            if not photo_file_id:
+                await query.edit_message_text("❌ У исходного поста нет картинки.")
+                return
+
+            # Удаляем пересланное сообщение
+            try:
+                await self.app.bot.delete_message(chat_id=user_id, message_id=forwarded.message_id)
+            except Exception:
+                pass  # Игнорируем ошибку удаления
+
+        except Exception as e:
+            logger.error("Ошибка при получении картинки из исходного поста: %s", e, exc_info=True)
+            await query.edit_message_text("❌ Не удалось получить картинку из исходного поста. Убедитесь, что бот имеет доступ к исходному каналу.")
+            return
+
+        _, selected_channels = self.publishing_states[user_id]
+        await self._publish_draft(draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id)
+        
+        # Очищаем состояние
+        del self.publishing_states[user_id]
+        
+        await query.edit_message_text("✅ Пост опубликован с исходной картинкой!")
+
+    async def _handle_publish_custom_photo(self, query, draft_id: int) -> None:
+        """Перейти в режим ожидания своей картинки."""
+        user_id = query.from_user.id
+        
+        if user_id not in self.publishing_states:
+            await query.edit_message_text("❌ Ошибка: состояние потеряно.")
+            return
+
+        await query.edit_message_text(
+            "📸 Отправьте картинку одним сообщением.",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
+                InlineKeyboardButton("Отмена", callback_data=f"publish_no_photo:{draft_id}")
             ]]),
         )
 
@@ -441,7 +555,7 @@ class ModerationBot:
             return
 
         _, selected_channels = self.publishing_states[user_id]
-        await self._publish_draft(draft_id, selected_channels, photo=None, user_id=user_id)
+        await self._publish_draft(draft_id, selected_channels, photo_file_id=None, user_id=user_id)
         
         # Очищаем состояние
         del self.publishing_states[user_id]

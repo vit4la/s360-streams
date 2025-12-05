@@ -105,6 +105,15 @@ class TelethonListener:
                         channel_id, message_id)
             return
 
+        # Получаем картинку из поста (если есть)
+        photo_file_id = None
+        if message.photo:
+            # Сохраняем file_id самой большой картинки
+            # Но через Telethon мы не можем получить file_id напрямую
+            # Нужно будет получить его через бота или сохранить как-то иначе
+            # Пока оставляем None, потом доработаем
+            pass
+
         # Дата сообщения
         post_date = message.date if message.date else datetime.now()
 
@@ -115,6 +124,7 @@ class TelethonListener:
                 message_id=message_id,
                 text_original=text,
                 date=post_date,
+                photo_file_id=photo_file_id,
             )
 
             if post_id:
