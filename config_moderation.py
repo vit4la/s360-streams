@@ -9,7 +9,7 @@ import os
 # ==========================
 # Токен бота для модерации (получить у @BotFather)
 # ВАЖНО: Не коммитьте реальный токен в Git! Используйте переменную окружения
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8240444233:AAFAP4ItzBvko53z07QoV8YvkfxRDe5UuQA")
 
 # ID операторов (модераторов) - список user_id из Telegram
 # Узнать свой user_id можно через @userinfobot или @getidsbot
@@ -58,6 +58,10 @@ TARGET_CHANNEL_IDS = [
 # API ключ OpenAI (получить на https://platform.openai.com/api-keys)
 # ВАЖНО: Не коммитьте реальный ключ в Git! Используйте переменную окружения или .env файл
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-your-api-key-here")
+
+# Прокси для OpenAI API (если нужен, формат: http://user:pass@host:port или http://host:port)
+# Оставь пустым если прокси не нужен
+OPENAI_PROXY = os.getenv("OPENAI_PROXY", "")
 
 # Модель GPT
 OPENAI_MODEL = "gpt-4o"

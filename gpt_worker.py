@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 
 import openai
 from openai import OpenAI
+import httpx
 
 import config_moderation as config
 from database import Database
@@ -28,7 +29,22 @@ class GPTWorker:
             db: Экземпляр Database для работы с БД
         """
         self.db = db
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        
+        # Настройка клиента OpenAI с прокси, если указан
+        client_kwargs = {"api_key": config.OPENAI_API_KEY}
+        
+        if config.OPENAI_PROXY:
+            # Используем httpx с прокси
+            http_client = httpx.Client(
+                proxies=config.OPENAI_PROXY,
+                timeout=60.0,
+            )
+            client_kwargs["http_client"] = http_client
+            logger.info("OpenAI клиент настроен с прокси: %s", config.OPENAI_PROXY)
+        else:
+            logger.info("OpenAI клиент настроен без прокси")
+        
+        self.client = OpenAI(**client_kwargs)
         self.running = False
 
     def _call_gpt(self, text: str) -> Optional[Dict[str, Any]]:
