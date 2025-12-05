@@ -410,9 +410,13 @@ def main() -> None:
     # Используем токен из переменной или из файла
     global VK_TOKEN
     VK_TOKEN = vk_token
-    if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "TELEGRAM_BOT_TOKEN":
-        logging.error("Не задан TELEGRAM_BOT_TOKEN. Откройте vk_to_telegram.py и заполните CONFIG.")
+    
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
+    if not telegram_token or telegram_token == "TELEGRAM_BOT_TOKEN":
+        logging.error("Не задан TELEGRAM_BOT_TOKEN. Добавьте TELEGRAM_BOT_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
+    global TELEGRAM_BOT_TOKEN
+    TELEGRAM_BOT_TOKEN = telegram_token
 
     # Проверяем, запущен ли скрипт как сервис (через systemd)
     # Если да, работаем в цикле. Если нет (запуск вручную), выполняем один раз
