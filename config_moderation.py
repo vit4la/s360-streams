@@ -3,6 +3,21 @@
 """
 
 import os
+from pathlib import Path
+
+# Загружаем переменные из .env файла, если он существует
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    with open(_env_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                # Убираем кавычки если есть
+                value = value.strip('"\'')
+                # Устанавливаем переменную окружения только если она еще не установлена
+                if key not in os.environ:
+                    os.environ[key] = value
 
 # ==========================
 # TELEGRAM БОТ (модерационный)
