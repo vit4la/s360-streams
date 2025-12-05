@@ -7,6 +7,7 @@ vk_last_post_state.json
 
 # Конфигурация и секреты
 .env
+.env.local
 # config_moderation.py - НЕ игнорируем, так как это шаблон конфига
 
 # База данных SQLite

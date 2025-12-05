@@ -703,9 +703,21 @@ class ModerationBot:
         self.running = False
 
         if self.app:
-            await self.app.updater.stop()
-            await self.app.stop()
-            await self.app.shutdown()
+            try:
+                if self.app.updater and self.app.updater.running:
+                    await self.app.updater.stop()
+            except Exception as e:
+                logger.debug("Ошибка при остановке updater: %s", e)
+            
+            try:
+                await self.app.stop()
+            except Exception as e:
+                logger.debug("Ошибка при остановке app: %s", e)
+            
+            try:
+                await self.app.shutdown()
+            except Exception as e:
+                logger.debug("Ошибка при shutdown app: %s", e)
 
         logger.info("Бот модерации остановлен")
 

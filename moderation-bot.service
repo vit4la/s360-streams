@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram Moderation Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/s360-streams
+# Переменные окружения нужно установить вручную на сервере
+# Или использовать EnvironmentFile=/root/s360-streams/.env
+# Environment="TELEGRAM_BOT_TOKEN=your_token_here"
+# Environment="OPENAI_API_KEY=your_key_here"
+# Environment="TELEGRAM_API_ID=your_id_here"
+# Environment="TELEGRAM_API_HASH=your_hash_here"
+EnvironmentFile=/root/s360-streams/.env
+ExecStart=/usr/bin/python3 /root/s360-streams/moderation_main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
