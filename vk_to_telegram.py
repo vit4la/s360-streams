@@ -112,9 +112,12 @@ def save_state(state: Dict[str, Any]) -> None:
 
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
+    # Используем токен из переменной окружения или глобальной константы
+    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
+    
     url = "https://api.vk.com/method/wall.get"
     params = {
-        "access_token": VK_TOKEN,
+        "access_token": vk_token,
         "v": VK_API_VERSION,
         "owner_id": -VK_GROUP_ID,  # у групп в owner_id минус
         "count": POSTS_LIMIT,
@@ -210,7 +213,15 @@ def send_telegram_media_group(
         logging.warning("Пустой список фото для отправки в Telegram.")
         return
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
+    # Используем токен из переменной окружения или глобальной константы
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if chat_id:
+        chat_id = int(chat_id)
+    else:
+        chat_id = TELEGRAM_CHAT_ID
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMediaGroup"
 
     media: List[Dict[str, Any]] = []
     for idx, photo_url in enumerate(photos):
@@ -225,13 +236,24 @@ def send_telegram_media_group(
         media.append(item)
 
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": str(chat_id),  # Telegram API принимает chat_id как строку
         "media": media,
     }
 
-    resp = requests.post(url, json=payload, timeout=15)
-    resp.raise_for_status()
-    logging.info("Отправлена медиагруппа из %s фото в Telegram.", len(photos))
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        resp.raise_for_status()
+        logging.info("Отправлена медиагруппа из %s фото в Telegram.", len(photos))
+    except requests.exceptions.HTTPError as e:
+        # Детальное логирование ошибки от Telegram API
+        error_detail = ""
+        try:
+            error_json = resp.json()
+            error_detail = f" | Telegram API ответ: {error_json}"
+        except:
+            error_detail = f" | Ответ сервера: {resp.text[:200]}"
+        logging.error("Ошибка Telegram API при отправке медиагруппы: %s%s", str(e), error_detail)
+        raise
 
 
 # ==========================
@@ -404,24 +426,16 @@ def main() -> None:
     setup_logging()
 
     # Простая проверка заполненности конфигурации
-    # Пробуем загрузить из .env еще раз (на случай если файл изменился)
-    global VK_TOKEN, TELEGRAM_BOT_TOKEN
-    
-    # Получаем токен из переменной окружения или используем значение из модуля
-    vk_token_env = os.getenv("VK_TOKEN")
-    vk_token = vk_token_env if vk_token_env else VK_TOKEN
+    # Токены уже загружены из .env в начале файла, проверяем их наличие
+    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
     if not vk_token or vk_token == "VK_ACCESS_TOKEN":
         logging.error("Не задан VK_TOKEN. Добавьте VK_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
-    # Используем токен из переменной или из файла
-    VK_TOKEN = vk_token
     
-    telegram_token_env = os.getenv("TELEGRAM_BOT_TOKEN")
-    telegram_token = telegram_token_env if telegram_token_env else TELEGRAM_BOT_TOKEN
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
     if not telegram_token or telegram_token == "TELEGRAM_BOT_TOKEN":
         logging.error("Не задан TELEGRAM_BOT_TOKEN. Добавьте TELEGRAM_BOT_TOKEN в .env файл или задайте в vk_to_telegram.py")
         return
-    TELEGRAM_BOT_TOKEN = telegram_token
 
     # Проверяем, запущен ли скрипт как сервис (через systemd)
     # Если да, работаем в цикле. Если нет (запуск вручную), выполняем один раз
