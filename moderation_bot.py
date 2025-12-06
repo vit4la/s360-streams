@@ -325,7 +325,9 @@ class ModerationBot:
             image_index = int(parts[2])
             await self._handle_select_image_for_publish(query, draft_id, image_index)
         else:
-            await query.edit_message_text("❌ Неизвестное действие.")
+            logger.warning("Неизвестное действие в callback: %s", action)
+            await query.edit_message_text(f"❌ Неизвестное действие: {action}")
+            await query.answer(f"Неизвестное действие: {action}")
 
     async def _handle_approve(
         self, query, draft_id: int, draft: Dict
