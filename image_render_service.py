@@ -12,7 +12,7 @@ import uuid
 
 from flask import Flask, request, jsonify
 from PIL import Image, ImageDraw, ImageFont
-import requests
+import httpx
 from io import BytesIO
 
 # Настройка логирования
@@ -50,25 +50,24 @@ def download_image(url: str) -> Optional[Image.Image]:
     """
     try:
         logger.info("Скачивание изображения: %s", url)
-        # Используем прокси, если указан в переменных окружения
-        proxies = None
+        # Используем httpx с поддержкой SOCKS5 прокси
         proxy_url = os.getenv("OPENAI_PROXY") or os.getenv("HTTP_PROXY")
-        if proxy_url:
-            if proxy_url.startswith("http://"):
-                proxy_url = proxy_url.replace("http://", "socks5://", 1)
-            proxies = {
-                "http": proxy_url,
-                "https": proxy_url
-            }
-        resp = requests.get(url, timeout=15, proxies=proxies)
-        resp.raise_for_status()
-        img = Image.open(BytesIO(resp.content))
-        # Конвертируем в RGB, если нужно (для JPEG)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        return img
+        if proxy_url and proxy_url.startswith("http://"):
+            proxy_url = proxy_url.replace("http://", "socks5://", 1)
+        
+        logger.info("Используется прокси: %s", proxy_url if proxy_url else "нет")
+        
+        with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            img = Image.open(BytesIO(resp.content))
+            # Конвертируем в RGB, если нужно (для JPEG)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            logger.info("Изображение успешно скачано: %sx%s, mode=%s", img.width, img.height, img.mode)
+            return img
     except Exception as e:
-        logger.error("Ошибка при скачивании изображения %s: %s", url, e)
+        logger.error("Ошибка при скачивании изображения %s: %s", url, e, exc_info=True)
         return None
 
 
