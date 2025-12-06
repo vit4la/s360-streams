@@ -831,8 +831,13 @@ class ModerationBot:
 
         await query.edit_message_text("🔄 Ищу новые картинки...")
 
-        # Запрос к Pexels API
-        pexels_images = self._search_pexels_images(image_query)
+        # Используем случайную страницу для получения других картинок
+        import random
+        random_page = random.randint(1, 10)  # Случайная страница от 1 до 10
+        logger.info("Поиск картинок для 'Другая картинка': query=%s, page=%s", image_query, random_page)
+        
+        # Запрос к Pexels API с случайной страницей
+        pexels_images = self._search_pexels_images(image_query, page=random_page)
         if not pexels_images or len(pexels_images) == 0:
             await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
             return
@@ -1078,11 +1083,12 @@ class ModerationBot:
                 except:
                     await self.app.bot.send_message(chat_id=query.from_user.id, text="❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
 
-    def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
+    def _search_pexels_images(self, query: str, page: int = 1) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API (синхронная функция).
 
         Args:
             query: Поисковый запрос
+            page: Номер страницы (1-80, по умолчанию 1)
 
         Returns:
             Список словарей с URL картинок или None при ошибке
@@ -1094,11 +1100,15 @@ class ModerationBot:
         headers = {
             "Authorization": config.PEXELS_API_KEY
         }
+        # Ограничиваем page от 1 до 80 (максимум для Pexels API)
+        page = max(1, min(page, 80))
         params = {
             "query": query,
             "per_page": config.PEXELS_PER_PAGE,
-            "orientation": "landscape"
+            "orientation": "landscape",
+            "page": page
         }
+        logger.info("Поиск картинок в Pexels: query=%s, page=%s", query, page)
 
         try:
             # Используем httpx вместо requests для лучшей поддержки SOCKS5
