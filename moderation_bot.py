@@ -1200,9 +1200,13 @@ class ModerationBot:
         self.app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
 
         # Регистрируем обработчики
+        logger.info("Регистрация обработчиков...")
         self.app.add_handler(CommandHandler("start", self.start_command))
+        logger.info("Обработчик команд зарегистрирован")
         self.app.add_handler(CallbackQueryHandler(self.callback_handler))
+        logger.info("Обработчик callback зарегистрирован")
         self.app.add_handler(MessageHandler(filters.ALL, self.message_handler))
+        logger.info("Обработчик сообщений зарегистрирован")
 
         # Запускаем бота
         await self.app.initialize()
