@@ -889,6 +889,51 @@ class ModerationBot:
 
         await query.answer("✅ Картинка обновлена!")
 
+    async def _handle_select_image_for_publish(
+        self, query, draft_id: int, image_index: int
+    ) -> None:
+        """Обработать выбор картинки для публикации (стилизует и сразу публикует)."""
+        draft = self.db.get_draft_post(draft_id)
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+
+        # Получаем картинки из БД
+        import json
+        pexels_images = None
+        pexels_images_json = draft.get("pexels_images_json")
+        if pexels_images_json:
+            try:
+                pexels_images = json.loads(pexels_images_json)
+            except json.JSONDecodeError:
+                pass
+
+        if not pexels_images or image_index >= len(pexels_images):
+            await query.edit_message_text("❌ Картинка не найдена.")
+            return
+
+        # Стилизуем выбранную картинку
+        await query.edit_message_text("🎨 Стилизую картинку...")
+        selected_image_url = pexels_images[image_index]["url"]
+        final_url = self._render_image(selected_image_url, draft["title"])
+
+        if not final_url:
+            await query.edit_message_text("❌ Не удалось стилизовать картинку.")
+            return
+
+        # Обновляем final_image_url в БД
+        self.db.update_draft_post(draft_id, final_image_url=final_url)
+
+        # Публикуем черновик
+        user_id = query.from_user.id
+        if user_id in self.publishing_states:
+            _, target_channels = self.publishing_states[user_id]
+            await self._publish_draft(draft_id, target_channels)
+            await query.edit_message_text("✅ Пост опубликован!")
+            del self.publishing_states[user_id]
+        else:
+            await query.edit_message_text("❌ Ошибка: состояние публикации не найдено.")
+
     def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API (синхронная функция).
 
