@@ -866,7 +866,7 @@ class ModerationBot:
                 InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
             ]
         ]
-        if image_query:
+        if updated_draft.get("image_query"):
             keyboard.append([
                 InlineKeyboardButton("♻️ Другая картинка", callback_data=f"change_image:{draft_id}")
             ])
