@@ -181,13 +181,17 @@ class GPTWorker:
 
         try:
             logger.info("Запрос к Pexels API: query=%s", query)
-            # Используем те же прокси, что и для GPT (через переменные окружения)
+            # Используем те же прокси, что и для GPT
             import os
             proxies = None
-            if os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY"):
+            if config.OPENAI_PROXY:
+                # Используем тот же прокси, что настроен для GPT
+                proxy_url = config.OPENAI_PROXY
+                if proxy_url.startswith("http://"):
+                    proxy_url = proxy_url.replace("http://", "socks5://", 1)
                 proxies = {
-                    "http": os.environ.get("HTTP_PROXY"),
-                    "https": os.environ.get("HTTPS_PROXY")
+                    "http": proxy_url,
+                    "https": proxy_url
                 }
             resp = requests.get(url, headers=headers, params=params, timeout=10, proxies=proxies)
             resp.raise_for_status()
