@@ -221,6 +221,9 @@ def send_telegram_media_group(
     else:
         chat_id = TELEGRAM_CHAT_ID
 
+    # Логируем chat_id для отладки
+    logging.info("Отправка в Telegram: chat_id=%s, фото=%s", chat_id, len(photos))
+
     # Ограничиваем длину caption (Telegram лимит: 1024 символа)
     if len(caption) > 1024:
         caption = caption[:1021] + "..."
@@ -269,8 +272,8 @@ def send_telegram_media_group(
             error_detail = f" | Ответ сервера: {resp.text[:500]}"
         logging.error("Ошибка Telegram API при отправке медиагруппы: %s%s", str(e), error_detail)
         # Логируем также payload для отладки (без токена)
-        logging.debug("Payload (без токена): chat_id=%s, media_count=%s, caption_len=%s", 
-                     chat_id, len(media), len(caption))
+        logging.error("Payload для отладки: chat_id=%s, media_count=%s, caption_len=%s, first_photo_url=%s", 
+                     chat_id, len(media), len(caption), photos[0][:100] if photos else "нет")
         raise
 
 
