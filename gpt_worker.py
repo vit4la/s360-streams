@@ -7,11 +7,13 @@ import asyncio
 import json
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from pathlib import Path
 
 import openai
 from openai import OpenAI
 import httpx
+import requests
 
 import config_moderation as config
 from database import Database
@@ -53,6 +55,9 @@ class GPTWorker:
         
         self.client = OpenAI(**client_kwargs)
         self.running = False
+        
+        # Создаём директорию для стилизованных изображений, если её нет
+        config.RENDERED_IMAGES_DIR.mkdir(exist_ok=True)
 
     def _call_gpt(self, text: str) -> Optional[Dict[str, Any]]:
         """Вызвать GPT API для обработки текста.
@@ -98,10 +103,14 @@ class GPTWorker:
                 else:
                     hashtags_str = str(hashtags)
 
+                # Получаем image_query (может отсутствовать в старых ответах GPT)
+                image_query = result.get("image_query", "")
+
                 return {
                     "title": result["title"],
                     "body": result["body"],
                     "hashtags": hashtags_str,
+                    "image_query": image_query,
                     "raw_response": content,
                 }
 
@@ -147,6 +156,101 @@ class GPTWorker:
 
         return None
 
+    def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
+        """Поиск картинок через Pexels API.
+
+        Args:
+            query: Поисковый запрос (например: "tennis match WTA indoor")
+
+        Returns:
+            Список словарей с URL картинок или None при ошибке
+        """
+        if not query:
+            logger.warning("Пустой запрос для поиска картинок")
+            return None
+
+        url = config.PEXELS_API_URL
+        headers = {
+            "Authorization": config.PEXELS_API_KEY
+        }
+        params = {
+            "query": query,
+            "per_page": config.PEXELS_PER_PAGE,
+            "orientation": "landscape"
+        }
+
+        try:
+            logger.info("Запрос к Pexels API: query=%s", query)
+            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            photos = data.get("photos", [])
+            if not photos:
+                logger.warning("Pexels API вернул пустой результат для запроса: %s", query)
+                return None
+
+            # Извлекаем URL картинок (приоритет: large > landscape > medium)
+            image_urls = []
+            for photo in photos:
+                src = photo.get("src", {})
+                # Берём large или landscape, если есть
+                url = src.get("large") or src.get("landscape") or src.get("medium")
+                if url:
+                    image_urls.append({
+                        "url": url,
+                        "photographer": photo.get("photographer", "Unknown"),
+                        "id": photo.get("id")
+                    })
+
+            logger.info("Pexels API вернул %s картинок для запроса: %s", len(image_urls), query)
+            return image_urls
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Ошибка при запросе к Pexels API: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Неожиданная ошибка при работе с Pexels API: %s", e, exc_info=True)
+            return None
+
+    def _render_image(self, image_url: str, title: str) -> Optional[str]:
+        """Вызвать сервис стилизации изображения.
+
+        Args:
+            image_url: URL исходной картинки
+            title: Заголовок новости
+
+        Returns:
+            URL стилизованной картинки или None при ошибке
+        """
+        service_url = f"{config.IMAGE_RENDER_SERVICE_URL}/render"
+        payload = {
+            "image_url": image_url,
+            "title": title,
+            "template": "default"
+        }
+
+        try:
+            logger.info("Запрос к сервису стилизации: image_url=%s", image_url[:100])
+            resp = requests.post(service_url, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            final_url = data.get("final_image_url")
+            if not final_url:
+                logger.error("Сервис стилизации не вернул final_image_url")
+                return None
+
+            logger.info("Картинка стилизована: %s", final_url)
+            return final_url
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Ошибка при запросе к сервису стилизации: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Неожиданная ошибка при работе с сервисом стилизации: %s", e, exc_info=True)
+            return None
+
     def _process_post(self, post: Dict[str, Any]) -> None:
         """Обработать один пост через GPT.
 
@@ -167,6 +271,24 @@ class GPTWorker:
             # Можно пометить пост как failed или оставить new для повторной попытки
             return
 
+        # Ищем картинки через Pexels API
+        image_query = result.get("image_query", "")
+        final_image_url = None
+
+        if image_query:
+            pexels_images = self._search_pexels_images(image_query)
+            if pexels_images and len(pexels_images) > 0:
+                # Берём первую картинку и стилизуем её
+                first_image_url = pexels_images[0]["url"]
+                final_image_url = self._render_image(first_image_url, result["title"])
+                
+                if not final_image_url:
+                    logger.warning("Не удалось стилизовать картинку для поста: post_id=%s", post_id)
+            else:
+                logger.warning("Не найдены картинки в Pexels для запроса: %s", image_query)
+        else:
+            logger.debug("GPT не вернул image_query для поста: post_id=%s", post_id)
+
         # Создаём черновик
         try:
             draft_id = self.db.add_draft_post(
@@ -175,6 +297,8 @@ class GPTWorker:
                 body=result["body"],
                 hashtags=result["hashtags"],
                 gpt_response_raw=result["raw_response"],
+                image_query=image_query,
+                final_image_url=final_image_url,
             )
 
             # Отмечаем исходный пост как обработанный
@@ -182,10 +306,11 @@ class GPTWorker:
 
             logger.info(
                 "Пост обработан и создан черновик: post_id=%s, draft_id=%s, "
-                "title=%.50s...",
+                "title=%.50s..., image_url=%s",
                 post_id,
                 draft_id,
                 result["title"],
+                "да" if final_image_url else "нет",
             )
         except Exception as e:
             logger.error("Ошибка при создании черновика: post_id=%s, error=%s", 

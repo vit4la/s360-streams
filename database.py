@@ -65,6 +65,8 @@ class Database:
                 body TEXT NOT NULL,
                 hashtags TEXT NOT NULL,
                 gpt_response_raw TEXT,
+                image_query TEXT,
+                final_image_url TEXT,
                 status TEXT NOT NULL DEFAULT 'pending_moderation',
                 target_chat_id TEXT,
                 target_message_id INTEGER,
@@ -73,6 +75,16 @@ class Database:
                 FOREIGN KEY (source_post_id) REFERENCES source_posts(id)
             )
         """)
+        
+        # Добавляем колонки для картинок, если их нет (для существующих БД)
+        try:
+            cursor.execute("ALTER TABLE draft_posts ADD COLUMN image_query TEXT")
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
+        try:
+            cursor.execute("ALTER TABLE draft_posts ADD COLUMN final_image_url TEXT")
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
 
         # Индексы для быстрого поиска
         cursor.execute("""
@@ -190,6 +202,8 @@ class Database:
         body: str,
         hashtags: str,
         gpt_response_raw: Optional[str] = None,
+        image_query: Optional[str] = None,
+        final_image_url: Optional[str] = None,
     ) -> int:
         """Добавить черновик для модерации.
 
@@ -199,6 +213,8 @@ class Database:
             body: Текст поста
             hashtags: Хэштеги (строка)
             gpt_response_raw: Сырой JSON ответ GPT (опционально)
+            image_query: Запрос для поиска картинки (опционально)
+            final_image_url: URL стилизованной картинки (опционально)
 
         Returns:
             ID созданного черновика
@@ -208,9 +224,9 @@ class Database:
 
         cursor.execute("""
             INSERT INTO draft_posts 
-            (source_post_id, title, body, hashtags, gpt_response_raw, status)
-            VALUES (?, ?, ?, ?, ?, 'pending_moderation')
-        """, (source_post_id, title, body, hashtags, gpt_response_raw))
+            (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_moderation')
+        """, (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url))
 
         draft_id = cursor.lastrowid
         conn.commit()
@@ -236,6 +252,8 @@ class Database:
                 d.body,
                 d.hashtags,
                 d.gpt_response_raw,
+                d.image_query,
+                d.final_image_url,
                 d.created_at,
                 s.channel_id,
                 s.message_id,
@@ -260,6 +278,8 @@ class Database:
                 "body": row["body"],
                 "hashtags": row["hashtags"],
                 "gpt_response_raw": row["gpt_response_raw"],
+                "image_query": row.get("image_query"),
+                "final_image_url": row.get("final_image_url"),
                 "created_at": row["created_at"],
                 "channel_id": row["channel_id"],
                 "message_id": row["message_id"],
@@ -290,6 +310,8 @@ class Database:
                 d.body,
                 d.hashtags,
                 d.gpt_response_raw,
+                d.image_query,
+                d.final_image_url,
                 d.status,
                 d.target_chat_id,
                 d.target_message_id,
@@ -315,6 +337,8 @@ class Database:
             "body": row["body"],
             "hashtags": row["hashtags"],
             "gpt_response_raw": row["gpt_response_raw"],
+            "image_query": row.get("image_query"),
+            "final_image_url": row.get("final_image_url"),
             "status": row["status"],
             "target_chat_id": row["target_chat_id"],
             "target_message_id": row["target_message_id"],
@@ -334,6 +358,7 @@ class Database:
         body: Optional[str] = None,
         hashtags: Optional[str] = None,
         status: Optional[str] = None,
+        final_image_url: Optional[str] = None,
     ) -> None:
         """Обновить черновик.
 
@@ -343,6 +368,7 @@ class Database:
             body: Новый текст (опционально)
             hashtags: Новые хэштеги (опционально)
             status: Новый статус (опционально)
+            final_image_url: URL стилизованной картинки (опционально)
         """
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -362,6 +388,9 @@ class Database:
         if status is not None:
             updates.append("status = ?")
             params.append(status)
+        if final_image_url is not None:
+            updates.append("final_image_url = ?")
+            params.append(final_image_url)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")

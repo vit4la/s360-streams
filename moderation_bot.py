@@ -18,6 +18,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+import requests
 
 import config_moderation as config
 from database import Database
@@ -156,6 +157,8 @@ class ModerationBot:
         """
         draft_id = draft["id"]
         message_text = self._format_draft_message(draft)
+        final_image_url = draft.get("final_image_url")
+        image_query = draft.get("image_query")
 
         # Кнопки действий
         keyboard = [
@@ -165,21 +168,50 @@ class ModerationBot:
                 InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
             ]
         ]
+        
+        # Добавляем кнопку "Другая картинка", если есть image_query
+        if image_query:
+            keyboard.append([
+                InlineKeyboardButton("♻️ Другая картинка", callback_data=f"change_image:{draft_id}")
+            ])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         sent_to = set()
 
         for moderator_id in config.MODERATOR_IDS:
             try:
-                await self.app.bot.send_message(
-                    chat_id=moderator_id,
-                    text=message_text,
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup,
-                )
+                # Если есть стилизованная картинка, отправляем её с текстом
+                if final_image_url:
+                    try:
+                        await self.app.bot.send_photo(
+                            chat_id=moderator_id,
+                            photo=final_image_url,  # Сервис уже возвращает полный URL
+                            caption=message_text,
+                            parse_mode="Markdown",
+                            reply_markup=reply_markup,
+                        )
+                    except Exception as photo_error:
+                        # Если не удалось отправить фото, отправляем только текст
+                        logger.warning("Не удалось отправить фото, отправляем только текст: %s", photo_error)
+                        await self.app.bot.send_message(
+                            chat_id=moderator_id,
+                            text=message_text,
+                            parse_mode="Markdown",
+                            reply_markup=reply_markup,
+                        )
+                else:
+                    # Нет картинки - отправляем только текст
+                    await self.app.bot.send_message(
+                        chat_id=moderator_id,
+                        text=message_text,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup,
+                    )
+                
                 sent_to.add(moderator_id)
-                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s", 
-                           draft_id, moderator_id)
+                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, has_image=%s", 
+                           draft_id, moderator_id, bool(final_image_url))
             except Exception as e:
                 logger.error(
                     "Ошибка при отправке черновика модератору: draft_id=%s, "
@@ -281,6 +313,13 @@ class ModerationBot:
         elif action == "publish_custom_photo":
             draft_id = int(parts[1])
             await self._handle_publish_custom_photo(query, draft_id)
+        elif action == "change_image":
+            draft_id = int(parts[1])
+            await self._handle_change_image(query, draft_id)
+        elif action == "select_image":
+            draft_id = int(parts[1])
+            image_index = int(parts[2])
+            await self._handle_select_image(query, draft_id, image_index)
         else:
             await query.edit_message_text("❌ Неизвестное действие.")
 
@@ -686,6 +725,203 @@ class ModerationBot:
         # Очищаем состояние редактирования (но можно редактировать снова)
         # Не удаляем, чтобы можно было редактировать несколько раз
 
+    async def _handle_change_image(self, query, draft_id: int) -> None:
+        """Обработать нажатие 'Другая картинка' - показать 3 новые картинки для выбора."""
+        draft = self.db.get_draft_post(draft_id)
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+
+        image_query = draft.get("image_query")
+        if not image_query:
+            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+            return
+
+        await query.edit_message_text("🔄 Ищу новые картинки...")
+
+        # Запрос к Pexels API
+        pexels_images = self._search_pexels_images(image_query)
+        if not pexels_images or len(pexels_images) == 0:
+            await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
+            return
+
+        # Стилизуем все картинки
+        styled_images = []
+        for idx, pexels_img in enumerate(pexels_images):
+            final_url = self._render_image(pexels_img["url"], draft["title"])
+            if final_url:
+                styled_images.append({
+                    "url": final_url,
+                    "index": idx
+                })
+
+        if not styled_images:
+            await query.edit_message_text("❌ Не удалось стилизовать картинки. Попробуйте позже.")
+            return
+
+        # Показываем все картинки для выбора
+        await query.edit_message_text(
+            f"📸 Найдено {len(styled_images)} картинок. Выберите одну:"
+        )
+
+        # Отправляем каждую картинку с кнопкой выбора
+        for styled_img in styled_images:
+            keyboard = [[
+                InlineKeyboardButton(
+                    "✅ Выбрать эту",
+                    callback_data=f"select_image:{draft_id}:{styled_img['index']}"
+                )
+            ]]
+
+            try:
+                await self.app.bot.send_photo(
+                    chat_id=query.from_user.id,
+                    photo=styled_img["url"],  # Сервис уже возвращает полный URL
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+            except Exception as e:
+                logger.error("Ошибка при отправке картинки для выбора: %s", e)
+
+    async def _handle_select_image(self, query, draft_id: int, image_index: int) -> None:
+        """Обработать выбор картинки оператором."""
+        draft = self.db.get_draft_post(draft_id)
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+
+        image_query = draft.get("image_query")
+        if not image_query:
+            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+            return
+
+        # Получаем картинки из Pexels
+        pexels_images = self._search_pexels_images(image_query)
+        if not pexels_images or image_index >= len(pexels_images):
+            await query.edit_message_text("❌ Картинка не найдена.")
+            return
+
+        # Стилизуем выбранную картинку
+        selected_image_url = pexels_images[image_index]["url"]
+        final_url = self._render_image(selected_image_url, draft["title"])
+
+        if not final_url:
+            await query.edit_message_text("❌ Не удалось стилизовать картинку.")
+            return
+
+        # Обновляем final_image_url в БД
+        self.db.update_draft_post(draft_id, final_image_url=final_url)
+
+        # Показываем обновлённый черновик
+        updated_draft = self.db.get_draft_post(draft_id)
+        message_text = self._format_draft_message(updated_draft)
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Опубликовать", callback_data=f"approve:{draft_id}"),
+                InlineKeyboardButton("✏️ Править", callback_data=f"edit:{draft_id}"),
+                InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
+            ]
+        ]
+        if image_query:
+            keyboard.append([
+                InlineKeyboardButton("♻️ Другая картинка", callback_data=f"change_image:{draft_id}")
+            ])
+
+        try:
+            await query.edit_message_caption(
+                caption=message_text,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except:
+            # Если не получилось обновить caption, отправляем новое сообщение
+            await self.app.bot.send_photo(
+                chat_id=query.from_user.id,
+                photo=final_url,  # Сервис уже возвращает полный URL
+                caption=message_text,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
+        await query.answer("✅ Картинка обновлена!")
+
+    def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
+        """Поиск картинок через Pexels API (синхронная функция).
+
+        Args:
+            query: Поисковый запрос
+
+        Returns:
+            Список словарей с URL картинок или None при ошибке
+        """
+        if not query:
+            return None
+
+        url = config.PEXELS_API_URL
+        headers = {
+            "Authorization": config.PEXELS_API_KEY
+        }
+        params = {
+            "query": query,
+            "per_page": config.PEXELS_PER_PAGE,
+            "orientation": "landscape"
+        }
+
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            photos = data.get("photos", [])
+            if not photos:
+                return None
+
+            image_urls = []
+            for photo in photos:
+                src = photo.get("src", {})
+                url = src.get("large") or src.get("landscape") or src.get("medium")
+                if url:
+                    image_urls.append({
+                        "url": url,
+                        "photographer": photo.get("photographer", "Unknown"),
+                        "id": photo.get("id")
+                    })
+
+            return image_urls
+
+        except Exception as e:
+            logger.error("Ошибка при запросе к Pexels API: %s", e)
+            return None
+
+    def _render_image(self, image_url: str, title: str) -> Optional[str]:
+        """Вызвать сервис стилизации изображения (синхронная функция).
+
+        Args:
+            image_url: URL исходной картинки
+            title: Заголовок новости
+
+        Returns:
+            URL стилизованной картинки или None при ошибке
+        """
+        service_url = f"{config.IMAGE_RENDER_SERVICE_URL}/render"
+        payload = {
+            "image_url": image_url,
+            "title": title,
+            "template": "default"
+        }
+
+        try:
+            resp = requests.post(service_url, json=payload, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            final_url = data.get("final_image_url")
+            return final_url
+
+        except Exception as e:
+            logger.error("Ошибка при запросе к сервису стилизации: %s", e)
+            return None
+
     async def _publish_draft(
         self,
         draft_id: int,
@@ -698,7 +934,7 @@ class ModerationBot:
         Args:
             draft_id: ID черновика
             target_channels: Список ID целевых каналов
-            photo_file_id: file_id фото (опционально)
+            photo_file_id: file_id фото из исходного поста (опционально, используется только если нет final_image_url)
             user_id: ID пользователя (для логирования)
         """
         draft = self.db.get_draft_post(draft_id)
@@ -709,9 +945,18 @@ class ModerationBot:
         title = draft["title"]
         body = draft["body"]
         hashtags = draft["hashtags"]
+        final_image_url = draft.get("final_image_url")
 
         # Формируем текст поста
         post_text = f"{title}\n\n{body}\n\n{hashtags}"
+
+        # Определяем, какую картинку использовать
+        # Приоритет: final_image_url > photo_file_id
+        image_to_use = None
+        if final_image_url:
+            image_to_use = final_image_url  # Сервис уже возвращает полный URL
+        elif photo_file_id:
+            image_to_use = photo_file_id
 
         # Публикуем в каждый канал
         published_count = 0
@@ -719,13 +964,23 @@ class ModerationBot:
 
         for channel_id in target_channels:
             try:
-                if photo_file_id:
+                if image_to_use:
                     # Отправляем с фото
-                    message = await self.app.bot.send_photo(
-                        chat_id=channel_id,
-                        photo=photo_file_id,
-                        caption=post_text,
-                    )
+                    # Если это URL (стилизованная картинка), используем URL
+                    # Если это file_id (исходная картинка), используем file_id
+                    if image_to_use.startswith("http://") or image_to_use.startswith("https://"):
+                        message = await self.app.bot.send_photo(
+                            chat_id=channel_id,
+                            photo=image_to_use,
+                            caption=post_text,
+                        )
+                    else:
+                        # Это file_id
+                        message = await self.app.bot.send_photo(
+                            chat_id=channel_id,
+                            photo=image_to_use,
+                            caption=post_text,
+                        )
                 else:
                     # Отправляем текстовое сообщение
                     message = await self.app.bot.send_message(
