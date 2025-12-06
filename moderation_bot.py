@@ -372,10 +372,12 @@ class ModerationBot:
                         await query.edit_message_text("📸 Выберите картинку для публикации:")
                         # Показываем картинки для выбора
                         for idx, pexels_img in enumerate(pexels_images):
+                            callback_data = f"select_image_for_publish:{draft_id}:{idx}"
+                            logger.info("Отправка картинки %s с callback_data: %s", idx, callback_data)
                             keyboard = [[
                                 InlineKeyboardButton(
                                     "✅ Выбрать эту",
-                                    callback_data=f"select_image_for_publish:{draft_id}:{idx}"
+                                    callback_data=callback_data
                                 )
                             ]]
                             try:
@@ -384,8 +386,9 @@ class ModerationBot:
                                     photo=pexels_img["url"],
                                     reply_markup=InlineKeyboardMarkup(keyboard),
                                 )
+                                logger.info("Картинка %s отправлена успешно с callback_data: %s", idx, callback_data)
                             except Exception as e:
-                                logger.error("Ошибка при отправке картинки: %s", e)
+                                logger.error("Ошибка при отправке картинки: %s", e, exc_info=True)
                         return
                 except json.JSONDecodeError:
                     pass
