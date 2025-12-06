@@ -380,33 +380,46 @@ class ModerationBot:
                 try:
                     pexels_images = json.loads(pexels_images_json)
                     if pexels_images and len(pexels_images) > 0:
+                        # Отправляем все картинки с кнопками в одном сообщении
+                        # Используем медиагруппу для первой картинки, остальные отправляем отдельно
                         await query.edit_message_text("📸 Выберите картинку для публикации:")
-                        # Показываем картинки для выбора
-                        for idx, pexels_img in enumerate(pexels_images):
-                            callback_data = f"select_image_for_publish:{draft_id}:{idx}"
-                            callback_data_len = len(callback_data.encode('utf-8'))
-                            logger.info("Отправка картинки %s с callback_data: %s (длина: %s байт)", idx, callback_data, callback_data_len)
-                            
-                            # Telegram ограничивает callback_data до 64 байт
-                            if callback_data_len > 64:
-                                logger.error("callback_data слишком длинный (%s байт), Telegram не примет!", callback_data_len)
-                                await query.edit_message_text(f"❌ Ошибка: callback_data слишком длинный ({callback_data_len} байт)")
-                                return
-                            
+                        
+                        # Отправляем первую картинку с кнопкой
+                        callback_data_0 = f"sel_img_pub:{draft_id}:0"
+                        keyboard_0 = [[
+                            InlineKeyboardButton(
+                                "✅ Выбрать эту (1/3)",
+                                callback_data=callback_data_0
+                            )
+                        ]]
+                        try:
+                            logger.info("Отправка картинки 0 с callback_data: %s", callback_data_0)
+                            result_0 = await self.app.bot.send_photo(
+                                chat_id=query.from_user.id,
+                                photo=pexels_images[0]["url"],
+                                reply_markup=InlineKeyboardMarkup(keyboard_0),
+                            )
+                            logger.info("Картинка 0 отправлена. message_id=%s", result_0.message_id)
+                        except Exception as e:
+                            logger.error("Ошибка при отправке картинки 0: %s", e, exc_info=True)
+                        
+                        # Отправляем остальные картинки с кнопками
+                        for idx in range(1, len(pexels_images)):
+                            callback_data = f"sel_img_pub:{draft_id}:{idx}"
                             keyboard = [[
                                 InlineKeyboardButton(
-                                    "✅ Выбрать эту",
+                                    f"✅ Выбрать эту ({idx+1}/3)",
                                     callback_data=callback_data
                                 )
                             ]]
                             try:
-                                logger.info("Попытка отправить картинку %s пользователю %s с callback_data: %s", idx, query.from_user.id, callback_data)
+                                logger.info("Отправка картинки %s с callback_data: %s", idx, callback_data)
                                 result = await self.app.bot.send_photo(
                                     chat_id=query.from_user.id,
-                                    photo=pexels_img["url"],
+                                    photo=pexels_images[idx]["url"],
                                     reply_markup=InlineKeyboardMarkup(keyboard),
                                 )
-                                logger.info("Картинка %s отправлена успешно. message_id=%s, callback_data: %s", idx, result.message_id, callback_data)
+                                logger.info("Картинка %s отправлена. message_id=%s", idx, result.message_id)
                             except Exception as e:
                                 logger.error("Ошибка при отправке картинки %s: %s", idx, e, exc_info=True)
                         return
