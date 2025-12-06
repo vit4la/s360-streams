@@ -978,31 +978,62 @@ class ModerationBot:
         selected_image_url = pexels_images[image_index]["url"]
         logger.info("Выбрана картинка: %s", selected_image_url)
         title = draft.get("title") if isinstance(draft, dict) else draft["title"]
-        final_url = self._render_image(selected_image_url, title)
+        logger.info("Начинаю стилизацию картинки для draft_id=%s, title=%s", draft_id, title[:50])
+        
+        try:
+            final_url = self._render_image(selected_image_url, title)
+            logger.info("_render_image вернул: %s", final_url)
+        except Exception as e:
+            logger.error("Ошибка при вызове _render_image: %s", e, exc_info=True)
+            await query.edit_message_text("❌ Ошибка при стилизации картинки.")
+            return
 
         if not final_url:
-            logger.error("Не удалось стилизовать картинку: %s", selected_image_url)
+            logger.error("Не удалось стилизовать картинку: %s, _render_image вернул None", selected_image_url)
             await query.edit_message_text("❌ Не удалось стилизовать картинку.")
             return
 
         logger.info("Картинка стилизована: %s", final_url)
         # Обновляем final_image_url в БД
-        self.db.update_draft_post(draft_id, final_image_url=final_url)
+        try:
+            self.db.update_draft_post(draft_id, final_image_url=final_url)
+            logger.info("final_image_url обновлен в БД для draft_id=%s", draft_id)
+        except Exception as e:
+            logger.error("Ошибка при обновлении БД: %s", e, exc_info=True)
+            await query.edit_message_text("❌ Ошибка при сохранении картинки в БД.")
+            return
 
         # Публикуем черновик
         user_id = query.from_user.id
         logger.info("Проверка publishing_states для user_id=%s: %s", user_id, user_id in self.publishing_states)
+        logger.info("Текущие publishing_states: %s", self.publishing_states)
+        
         if user_id in self.publishing_states:
             _, target_channels = self.publishing_states[user_id]
             logger.info("Найдено состояние публикации, каналы: %s", target_channels)
-            await self._publish_draft(draft_id, target_channels)
-            await query.edit_message_text("✅ Пост опубликован!")
-            del self.publishing_states[user_id]
+            try:
+                await self._publish_draft(draft_id, target_channels)
+                await query.edit_message_text("✅ Пост опубликован!")
+                del self.publishing_states[user_id]
+                logger.info("Публикация завершена, состояние удалено")
+            except Exception as e:
+                logger.error("Ошибка при публикации: %s", e, exc_info=True)
+                await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
         else:
             logger.warning("Состояние публикации не найдено для user_id=%s. publishing_states: %s", user_id, self.publishing_states)
-            # Если состояние не найдено, пытаемся получить каналы из черновика или использовать дефолтные
-            # Но лучше показать ошибку и предложить выбрать каналы заново
-            await query.edit_message_text("❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
+            # Если состояние не найдено, используем дефолтный канал
+            if len(config.TARGET_CHANNEL_IDS) == 1:
+                target_channel = config.TARGET_CHANNEL_IDS[0]
+                logger.info("Используем дефолтный канал: %s", target_channel)
+                try:
+                    await self._publish_draft(draft_id, [target_channel])
+                    await query.edit_message_text("✅ Пост опубликован!")
+                    logger.info("Публикация завершена с дефолтным каналом")
+                except Exception as e:
+                    logger.error("Ошибка при публикации с дефолтным каналом: %s", e, exc_info=True)
+                    await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
+            else:
+                await query.edit_message_text("❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
 
     def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API (синхронная функция).
@@ -1079,11 +1110,15 @@ class ModerationBot:
         }
 
         try:
+            logger.info("Запрос к сервису стилизации: %s", service_url)
             resp = requests.post(service_url, json=payload, timeout=30)
+            logger.info("Ответ сервиса стилизации: status=%s", resp.status_code)
             resp.raise_for_status()
             data = resp.json()
+            logger.info("Данные от сервиса стилизации: %s", data)
 
             final_url = data.get("final_image_url")
+            logger.info("Получен final_image_url: %s", final_url)
             return final_url
 
         except Exception as e:
