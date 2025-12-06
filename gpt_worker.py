@@ -156,11 +156,12 @@ class GPTWorker:
 
         return None
 
-    def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
+    def _search_pexels_images(self, query: str, page: int = None) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API.
 
         Args:
             query: Поисковый запрос (например: "tennis match WTA indoor")
+            page: Номер страницы (1-80, если None - используется случайная страница для разнообразия)
 
         Returns:
             Список словарей с URL картинок или None при ошибке
@@ -169,18 +170,27 @@ class GPTWorker:
             logger.warning("Пустой запрос для поиска картинок")
             return None
 
+        # Если page не указан, используем случайную страницу для разнообразия картинок
+        if page is None:
+            import random
+            page = random.randint(1, 10)  # Случайная страница от 1 до 10
+            logger.info("Используется случайная страница для разнообразия: page=%s", page)
+
         url = config.PEXELS_API_URL
         headers = {
             "Authorization": config.PEXELS_API_KEY
         }
+        # Ограничиваем page от 1 до 80 (максимум для Pexels API)
+        page = max(1, min(page, 80))
         params = {
             "query": query,
             "per_page": config.PEXELS_PER_PAGE,
-            "orientation": "landscape"
+            "orientation": "landscape",
+            "page": page
         }
 
         try:
-            logger.info("Запрос к Pexels API: query=%s", query)
+            logger.info("Запрос к Pexels API: query=%s, page=%s", query, page)
             # Используем httpx вместо requests для лучшей поддержки SOCKS5
             import httpx
             proxy_url = None
