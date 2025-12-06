@@ -189,7 +189,7 @@ class GPTWorker:
                 if proxy_url.startswith("http://"):
                     proxy_url = proxy_url.replace("http://", "socks5://", 1)
             
-            with httpx.Client(proxies=proxy_url, timeout=10.0) as client:
+            with httpx.Client(proxy=proxy_url, timeout=10.0) as client:
                 resp = client.get(url, headers=headers, params=params)
                 resp.raise_for_status()
                 data = resp.json()
