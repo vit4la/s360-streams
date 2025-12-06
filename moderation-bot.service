@@ -13,7 +13,7 @@ WorkingDirectory=/root/s360-streams
 # Environment="TELEGRAM_API_ID=your_id_here"
 # Environment="TELEGRAM_API_HASH=your_hash_here"
 EnvironmentFile=/root/s360-streams/.env
-ExecStart=/usr/bin/python3 /root/s360-streams/moderation_main.py
+ExecStart=/root/s360-streams/venv/bin/python /root/s360-streams/moderation_main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
