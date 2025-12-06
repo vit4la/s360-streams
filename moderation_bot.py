@@ -357,10 +357,23 @@ class ModerationBot:
             draft_id = int(parts[1])
             image_index = int(parts[2])
             await self._handle_select_image(query, draft_id, image_index)
-        elif action == "select_image_for_publish" or action == "sel_img_pub":
+        elif action == "select_image_for_publish":
+            # Это может быть либо выбор картинки для публикации (без индекса), либо выбор конкретной картинки (с индексом)
+            if len(parts) == 2:
+                # Просто запрос на показ картинок
+                draft_id = int(parts[1])
+                await self._handle_show_images_for_publish(query, draft_id)
+            elif len(parts) == 3:
+                # Выбор конкретной картинки
+                draft_id = int(parts[1])
+                image_index = int(parts[2])
+                logger.info("Обработка select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
+                await self._handle_select_image_for_publish(query, draft_id, image_index)
+        elif action == "sel_img_pub":
+            # Старый формат для обратной совместимости
             draft_id = int(parts[1])
             image_index = int(parts[2])
-            logger.info("Обработка select_image_for_publish/sel_img_pub: draft_id=%s, image_index=%s", draft_id, image_index)
+            logger.info("Обработка sel_img_pub: draft_id=%s, image_index=%s", draft_id, image_index)
             await self._handle_select_image_for_publish(query, draft_id, image_index)
         elif action == "select_image":
             draft_id = int(parts[1])
