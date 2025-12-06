@@ -868,20 +868,18 @@ class ModerationBot:
         }
 
         try:
-            # Используем те же прокси, что и для GPT
-            proxies = None
+            # Используем httpx вместо requests для лучшей поддержки SOCKS5
+            import httpx
+            proxy_url = None
             if config.OPENAI_PROXY:
-                # Используем тот же прокси, что настроен для GPT
                 proxy_url = config.OPENAI_PROXY
                 if proxy_url.startswith("http://"):
                     proxy_url = proxy_url.replace("http://", "socks5://", 1)
-                proxies = {
-                    "http": proxy_url,
-                    "https": proxy_url
-                }
-            resp = requests.get(url, headers=headers, params=params, timeout=10, proxies=proxies)
-            resp.raise_for_status()
-            data = resp.json()
+            
+            with httpx.Client(proxies=proxy_url, timeout=10.0) as client:
+                resp = client.get(url, headers=headers, params=params)
+                resp.raise_for_status()
+                data = resp.json()
 
             photos = data.get("photos", [])
             if not photos:
