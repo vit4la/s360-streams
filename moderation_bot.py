@@ -991,13 +991,18 @@ class ModerationBot:
 
         # Публикуем черновик
         user_id = query.from_user.id
+        logger.info("Проверка publishing_states для user_id=%s: %s", user_id, user_id in self.publishing_states)
         if user_id in self.publishing_states:
             _, target_channels = self.publishing_states[user_id]
+            logger.info("Найдено состояние публикации, каналы: %s", target_channels)
             await self._publish_draft(draft_id, target_channels)
             await query.edit_message_text("✅ Пост опубликован!")
             del self.publishing_states[user_id]
         else:
-            await query.edit_message_text("❌ Ошибка: состояние публикации не найдено.")
+            logger.warning("Состояние публикации не найдено для user_id=%s. publishing_states: %s", user_id, self.publishing_states)
+            # Если состояние не найдено, пытаемся получить каналы из черновика или использовать дефолтные
+            # Но лучше показать ошибку и предложить выбрать каналы заново
+            await query.edit_message_text("❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
 
     def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API (синхронная функция).
