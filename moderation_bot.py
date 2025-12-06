@@ -169,11 +169,8 @@ class ModerationBot:
             ]
         ]
         
-        # Добавляем кнопку "Другая картинка", если есть image_query
-        if image_query:
-            keyboard.append([
-                InlineKeyboardButton("♻️ Другая картинка", callback_data=f"change_image:{draft_id}")
-            ])
+        # Кнопка "Другая картинка" больше не нужна в основном сообщении
+        # Она будет доступна только при выборе картинок для публикации
         
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -353,6 +350,9 @@ class ModerationBot:
         elif action == "change_image":
             draft_id = int(parts[1])
             await self._handle_change_image(query, draft_id)
+        elif action == "more_images_for_publish":
+            draft_id = int(parts[1])
+            await self._handle_show_images_for_publish(query, draft_id)
         elif action == "select_image":
             draft_id = int(parts[1])
             image_index = int(parts[2])
