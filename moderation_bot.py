@@ -261,13 +261,24 @@ class ModerationBot:
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик callback-запросов от inline-кнопок."""
         logger.info("=== CALLBACK HANDLER ВЫЗВАН ===")
+        logger.info("update type: %s", type(update))
+        logger.info("update: %s", update)
+        
         query = update.callback_query
         if not query:
             logger.warning("query is None в callback_handler")
+            logger.warning("update.callback_query: %s", update.callback_query)
             return
         
         logger.info("query.data = %s", query.data)
-        await query.answer()
+        logger.info("query.from_user.id = %s", query.from_user.id)
+        logger.info("query.message.message_id = %s", query.message.message_id if query.message else "None")
+        
+        try:
+            await query.answer()
+            logger.info("query.answer() выполнен успешно")
+        except Exception as e:
+            logger.error("Ошибка при query.answer(): %s", e, exc_info=True)
 
         user_id = query.from_user.id
         logger.info("user_id = %s", user_id)
