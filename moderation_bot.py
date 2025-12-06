@@ -974,7 +974,17 @@ class ModerationBot:
             return
 
         # Стилизуем выбранную картинку
-        await query.edit_message_text("🎨 Стилизую картинку...")
+        # Если сообщение - фото, используем edit_message_caption, иначе edit_message_text
+        try:
+            if query.message.photo:
+                await query.edit_message_caption(caption="🎨 Стилизую картинку...")
+            else:
+                await query.edit_message_text("🎨 Стилизую картинку...")
+        except Exception as e:
+            logger.warning("Не удалось отредактировать сообщение, отправляю новое: %s", e)
+            await query.answer("🎨 Стилизую картинку...")
+            await self.app.bot.send_message(chat_id=query.from_user.id, text="🎨 Стилизую картинку...")
+        
         selected_image_url = pexels_images[image_index]["url"]
         logger.info("Выбрана картинка: %s", selected_image_url)
         title = draft.get("title") if isinstance(draft, dict) else draft["title"]
@@ -1016,12 +1026,24 @@ class ModerationBot:
             logger.info("Найдено состояние публикации, каналы: %s", target_channels)
             try:
                 await self._publish_draft(draft_id, target_channels)
-                await query.edit_message_text("✅ Пост опубликован!")
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption="✅ Пост опубликован!")
+                    else:
+                        await query.edit_message_text("✅ Пост опубликован!")
+                except:
+                    await self.app.bot.send_message(chat_id=query.from_user.id, text="✅ Пост опубликован!")
                 del self.publishing_states[user_id]
                 logger.info("Публикация завершена, состояние удалено")
             except Exception as e:
                 logger.error("Ошибка при публикации: %s", e, exc_info=True)
-                await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption=f"❌ Ошибка при публикации: {str(e)}")
+                    else:
+                        await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
+                except:
+                    await self.app.bot.send_message(chat_id=query.from_user.id, text=f"❌ Ошибка при публикации: {str(e)}")
         else:
             logger.warning("Состояние публикации не найдено для user_id=%s. publishing_states: %s", user_id, self.publishing_states)
             # Если состояние не найдено, используем дефолтный канал
@@ -1030,13 +1052,31 @@ class ModerationBot:
                 logger.info("Используем дефолтный канал: %s", target_channel)
                 try:
                     await self._publish_draft(draft_id, [target_channel])
-                    await query.edit_message_text("✅ Пост опубликован!")
+                    try:
+                        if query.message.photo:
+                            await query.edit_message_caption(caption="✅ Пост опубликован!")
+                        else:
+                            await query.edit_message_text("✅ Пост опубликован!")
+                    except:
+                        await self.app.bot.send_message(chat_id=query.from_user.id, text="✅ Пост опубликован!")
                     logger.info("Публикация завершена с дефолтным каналом")
                 except Exception as e:
                     logger.error("Ошибка при публикации с дефолтным каналом: %s", e, exc_info=True)
-                    await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
+                    try:
+                        if query.message.photo:
+                            await query.edit_message_caption(caption=f"❌ Ошибка при публикации: {str(e)}")
+                        else:
+                            await query.edit_message_text(f"❌ Ошибка при публикации: {str(e)}")
+                    except:
+                        await self.app.bot.send_message(chat_id=query.from_user.id, text=f"❌ Ошибка при публикации: {str(e)}")
             else:
-                await query.edit_message_text("❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption="❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
+                    else:
+                        await query.edit_message_text("❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
+                except:
+                    await self.app.bot.send_message(chat_id=query.from_user.id, text="❌ Ошибка: состояние публикации не найдено. Пожалуйста, нажмите 'Опубликовать' снова и выберите каналы.")
 
     def _search_pexels_images(self, query: str) -> Optional[List[Dict[str, str]]]:
         """Поиск картинок через Pexels API (синхронная функция).
