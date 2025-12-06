@@ -405,10 +405,14 @@ class ModerationBot:
         source_photo_file_id = draft.get("photo_file_id")
         image_query = draft.get("image_query")
         
+        # Логируем для отладки
+        logger.info("_handle_approve: draft_id=%s, image_query=%s, source_photo_file_id=%s", 
+                   draft_id, image_query, source_photo_file_id)
+        
         keyboard = []
         
-        # Кнопка "Выбрать картинку" - только если есть image_query
-        if image_query:
+        # Кнопка "Выбрать картинку" - только если есть image_query (не пустая строка)
+        if image_query and image_query.strip():
             keyboard.append([
                 InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
             ])
