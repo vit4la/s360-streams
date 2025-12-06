@@ -270,8 +270,10 @@ class ModerationBot:
             return
 
         data = query.data
+        logger.info("Получен callback: user_id=%s, data=%s", user_id, data)
         parts = data.split(":")
         action = parts[0]
+        logger.debug("Действие: %s, части: %s", action, parts)
 
         if action == "approve":
             draft_id = int(parts[1])
@@ -323,9 +325,15 @@ class ModerationBot:
         elif action == "select_image_for_publish":
             draft_id = int(parts[1])
             image_index = int(parts[2])
+            logger.info("Обработка select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
             await self._handle_select_image_for_publish(query, draft_id, image_index)
+        elif action == "select_image":
+            draft_id = int(parts[1])
+            image_index = int(parts[2])
+            logger.info("Обработка select_image: draft_id=%s, image_index=%s", draft_id, image_index)
+            await self._handle_select_image(query, draft_id, image_index)
         else:
-            logger.warning("Неизвестное действие в callback: %s", action)
+            logger.warning("Неизвестное действие в callback: %s, data=%s", action, data)
             await query.edit_message_text(f"❌ Неизвестное действие: {action}")
             await query.answer(f"Неизвестное действие: {action}")
 
