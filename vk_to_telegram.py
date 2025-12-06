@@ -60,7 +60,12 @@ POSTS_LIMIT = 20
 # Telegram
 # В боевой среде лучше хранить его в переменной окружения или .env
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "-4999682913"))
+# chat_id может быть числом (для групп) или строкой (username типа @S360streams)
+_telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "@S360streams")
+try:
+    TELEGRAM_CHAT_ID = int(_telegram_chat_id)  # Если это число, преобразуем
+except ValueError:
+    TELEGRAM_CHAT_ID = _telegram_chat_id  # Если строка (username), оставляем как есть
 
 # Файл для хранения состояния (последний отправленный post_id)
 STATE_FILE = Path("vk_last_post_state.json")
@@ -215,11 +220,15 @@ def send_telegram_media_group(
 
     # Используем токен из переменной окружения или глобальной константы
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if chat_id:
-        chat_id = int(chat_id)
+    chat_id_env = os.getenv("TELEGRAM_CHAT_ID")
+    if chat_id_env:
+        # Если из .env - пытаемся преобразовать в число, если не получается - оставляем строкой
+        try:
+            chat_id = int(chat_id_env)
+        except ValueError:
+            chat_id = chat_id_env  # username типа @S360streams
     else:
-        chat_id = TELEGRAM_CHAT_ID
+        chat_id = TELEGRAM_CHAT_ID  # Используем из конфига (может быть число или строка)
 
     # Логируем chat_id для отладки
     logging.info("Отправка в Telegram: chat_id=%s, фото=%s", chat_id, len(photos))
@@ -254,7 +263,7 @@ def send_telegram_media_group(
         return
 
     payload = {
-        "chat_id": chat_id,  # Telegram API принимает chat_id как число для групп
+        "chat_id": chat_id,  # Telegram API принимает chat_id как число или строку (username типа @S360streams)
         "media": media,
     }
 
