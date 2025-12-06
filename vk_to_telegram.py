@@ -221,10 +221,20 @@ def send_telegram_media_group(
     else:
         chat_id = TELEGRAM_CHAT_ID
 
+    # Ограничиваем длину caption (Telegram лимит: 1024 символа)
+    if len(caption) > 1024:
+        caption = caption[:1021] + "..."
+        logging.warning("Подпись обрезана до 1024 символов.")
+
     url = f"https://api.telegram.org/bot{bot_token}/sendMediaGroup"
 
     media: List[Dict[str, Any]] = []
     for idx, photo_url in enumerate(photos):
+        # Проверяем, что URL не пустой
+        if not photo_url or not isinstance(photo_url, str):
+            logging.warning("Пропущен невалидный URL фото: %s", photo_url)
+            continue
+            
         item: Dict[str, Any] = {
             "type": "photo",
             "media": photo_url,
@@ -235,15 +245,20 @@ def send_telegram_media_group(
             item["parse_mode"] = parse_mode
         media.append(item)
 
+    # Если после фильтрации не осталось валидных фото, выходим
+    if not media:
+        logging.error("Нет валидных фото для отправки в Telegram.")
+        return
+
     payload = {
-        "chat_id": str(chat_id),  # Telegram API принимает chat_id как строку
+        "chat_id": chat_id,  # Telegram API принимает chat_id как число для групп
         "media": media,
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=15)
+        resp = requests.post(url, json=payload, timeout=30)
         resp.raise_for_status()
-        logging.info("Отправлена медиагруппа из %s фото в Telegram.", len(photos))
+        logging.info("Отправлена медиагруппа из %s фото в Telegram.", len(media))
     except requests.exceptions.HTTPError as e:
         # Детальное логирование ошибки от Telegram API
         error_detail = ""
@@ -251,8 +266,11 @@ def send_telegram_media_group(
             error_json = resp.json()
             error_detail = f" | Telegram API ответ: {error_json}"
         except:
-            error_detail = f" | Ответ сервера: {resp.text[:200]}"
+            error_detail = f" | Ответ сервера: {resp.text[:500]}"
         logging.error("Ошибка Telegram API при отправке медиагруппы: %s%s", str(e), error_detail)
+        # Логируем также payload для отладки (без токена)
+        logging.debug("Payload (без токена): chat_id=%s, media_count=%s, caption_len=%s", 
+                     chat_id, len(media), len(caption))
         raise
 
 
@@ -402,8 +420,14 @@ def process_posts() -> None:
             logging.info("Пост %s пропущен: не удалось получить превью видео.", post_id)
             continue
 
+        # Логируем, что нашли для отладки
+        logging.debug("Пост %s: найдено %s превью, первое URL: %s", post_id, len(photos), photos[0][:100] if photos else "нет")
+
         video_link = get_first_video_link(attachments)
         caption = build_post_caption(text, video_link)
+        
+        # Логируем длину caption для отладки
+        logging.debug("Пост %s: длина caption = %s символов", post_id, len(caption))
 
         try:
             send_telegram_media_group(photos, caption)
