@@ -903,34 +903,45 @@ class ModerationBot:
         self, query, draft_id: int, image_index: int
     ) -> None:
         """Обработать выбор картинки для публикации (стилизует и сразу публикует)."""
+        logger.info("_handle_select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
         draft = self.db.get_draft_post(draft_id)
         if not draft:
+            logger.error("Черновик не найден: draft_id=%s", draft_id)
             await query.edit_message_text("❌ Черновик не найден.")
             return
 
         # Получаем картинки из БД
         import json
         pexels_images = None
-        pexels_images_json = draft.get("pexels_images_json")
+        # Используем правильный доступ к полям (sqlite3.Row или dict)
+        pexels_images_json = draft.get("pexels_images_json") if isinstance(draft, dict) else (draft["pexels_images_json"] if "pexels_images_json" in draft.keys() else None)
+        logger.debug("pexels_images_json: %s", pexels_images_json[:100] if pexels_images_json else None)
         if pexels_images_json:
             try:
                 pexels_images = json.loads(pexels_images_json)
-            except json.JSONDecodeError:
+                logger.info("Загружено картинок из Pexels: %s", len(pexels_images))
+            except json.JSONDecodeError as e:
+                logger.error("Ошибка парсинга pexels_images_json: %s", e)
                 pass
 
         if not pexels_images or image_index >= len(pexels_images):
+            logger.error("Картинка не найдена: image_index=%s, всего картинок=%s", image_index, len(pexels_images) if pexels_images else 0)
             await query.edit_message_text("❌ Картинка не найдена.")
             return
 
         # Стилизуем выбранную картинку
         await query.edit_message_text("🎨 Стилизую картинку...")
         selected_image_url = pexels_images[image_index]["url"]
-        final_url = self._render_image(selected_image_url, draft["title"])
+        logger.info("Выбрана картинка: %s", selected_image_url)
+        title = draft.get("title") if isinstance(draft, dict) else draft["title"]
+        final_url = self._render_image(selected_image_url, title)
 
         if not final_url:
+            logger.error("Не удалось стилизовать картинку: %s", selected_image_url)
             await query.edit_message_text("❌ Не удалось стилизовать картинку.")
             return
 
+        logger.info("Картинка стилизована: %s", final_url)
         # Обновляем final_image_url в БД
         self.db.update_draft_post(draft_id, final_image_url=final_url)
 
