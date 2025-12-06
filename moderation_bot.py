@@ -981,7 +981,10 @@ class ModerationBot:
         logger.info("Начинаю стилизацию картинки для draft_id=%s, title=%s", draft_id, title[:50])
         
         try:
-            final_url = self._render_image(selected_image_url, title)
+            # Вызываем синхронную функцию в executor, чтобы не блокировать event loop
+            import asyncio
+            loop = asyncio.get_event_loop()
+            final_url = await loop.run_in_executor(None, self._render_image, selected_image_url, title)
             logger.info("_render_image вернул: %s", final_url)
         except Exception as e:
             logger.error("Ошибка при вызове _render_image: %s", e, exc_info=True)
