@@ -1210,9 +1210,13 @@ class ModerationBot:
         logger.info("Обработчик сообщений зарегистрирован")
 
         # Запускаем бота
+        logger.info("Инициализация бота...")
         await self.app.initialize()
+        logger.info("Бот инициализирован")
         await self.app.start()
+        logger.info("Бот запущен")
         await self.app.updater.start_polling()
+        logger.info("Polling запущен, бот готов к работе")
 
         logger.info("Бот модерации запущен")
 
