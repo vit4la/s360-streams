@@ -389,14 +389,15 @@ class ModerationBot:
                                 )
                             ]]
                             try:
-                                await self.app.bot.send_photo(
+                                logger.info("Попытка отправить картинку %s пользователю %s с callback_data: %s", idx, query.from_user.id, callback_data)
+                                result = await self.app.bot.send_photo(
                                     chat_id=query.from_user.id,
                                     photo=pexels_img["url"],
                                     reply_markup=InlineKeyboardMarkup(keyboard),
                                 )
-                                logger.info("Картинка %s отправлена успешно с callback_data: %s", idx, callback_data)
+                                logger.info("Картинка %s отправлена успешно. message_id=%s, callback_data: %s", idx, result.message_id, callback_data)
                             except Exception as e:
-                                logger.error("Ошибка при отправке картинки: %s", e, exc_info=True)
+                                logger.error("Ошибка при отправке картинки %s: %s", idx, e, exc_info=True)
                         return
                 except json.JSONDecodeError:
                     pass
