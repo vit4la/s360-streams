@@ -373,7 +373,15 @@ class ModerationBot:
                         # Показываем картинки для выбора
                         for idx, pexels_img in enumerate(pexels_images):
                             callback_data = f"select_image_for_publish:{draft_id}:{idx}"
-                            logger.info("Отправка картинки %s с callback_data: %s", idx, callback_data)
+                            callback_data_len = len(callback_data.encode('utf-8'))
+                            logger.info("Отправка картинки %s с callback_data: %s (длина: %s байт)", idx, callback_data, callback_data_len)
+                            
+                            # Telegram ограничивает callback_data до 64 байт
+                            if callback_data_len > 64:
+                                logger.error("callback_data слишком длинный (%s байт), Telegram не примет!", callback_data_len)
+                                await query.edit_message_text(f"❌ Ошибка: callback_data слишком длинный ({callback_data_len} байт)")
+                                return
+                            
                             keyboard = [[
                                 InlineKeyboardButton(
                                     "✅ Выбрать эту",
