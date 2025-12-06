@@ -277,6 +277,15 @@ class Database:
 
         drafts = []
         for row in rows:
+            # Извлекаем image_query - может быть None или пустая строка
+            image_query = None
+            try:
+                image_query = row["image_query"]
+                if image_query == "":
+                    image_query = None
+            except (KeyError, IndexError):
+                pass
+            
             drafts.append({
                 "id": row["id"],
                 "source_post_id": row["source_post_id"],
@@ -284,7 +293,7 @@ class Database:
                 "body": row["body"],
                 "hashtags": row["hashtags"],
                 "gpt_response_raw": row["gpt_response_raw"],
-                "image_query": row["image_query"] if "image_query" in row.keys() else None,
+                "image_query": image_query,
                 "final_image_url": row["final_image_url"] if "final_image_url" in row.keys() else None,
                 "pexels_images_json": row["pexels_images_json"] if "pexels_images_json" in row.keys() else None,
                 "created_at": row["created_at"],
