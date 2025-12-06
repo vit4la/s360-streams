@@ -937,6 +937,71 @@ class ModerationBot:
 
         await query.answer("✅ Картинка обновлена!")
 
+    async def _handle_show_images_for_publish(self, query, draft_id: int) -> None:
+        """Показать картинки для выбора при публикации."""
+        draft = self.db.get_draft_post(draft_id)
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+
+        image_query = draft.get("image_query")
+        if not image_query:
+            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+            return
+
+        await query.edit_message_text("🔄 Ищу картинки...")
+
+        # Запрос к Pexels API (используем случайную страницу для разнообразия)
+        import random
+        random_page = random.randint(1, 10)
+        logger.info("Поиск картинок для публикации: query=%s, page=%s", image_query, random_page)
+        
+        pexels_images = self._search_pexels_images(image_query, page=random_page)
+        if not pexels_images or len(pexels_images) == 0:
+            await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
+            return
+
+        # Сохраняем картинки в БД
+        import json
+        pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
+        self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
+
+        # Показываем картинки для выбора
+        await query.edit_message_text("📸 Выберите картинку для публикации:")
+        
+        # Отправляем каждую картинку с кнопкой выбора
+        for idx, pexels_img in enumerate(pexels_images):
+            callback_data = f"select_image_for_publish:{draft_id}:{idx}"
+            keyboard = [[
+                InlineKeyboardButton(
+                    f"✅ Выбрать эту ({idx+1}/3)",
+                    callback_data=callback_data
+                )
+            ]]
+            try:
+                logger.info("Отправка картинки %s с callback_data: %s", idx, callback_data)
+                result = await self.app.bot.send_photo(
+                    chat_id=query.from_user.id,
+                    photo=pexels_img["url"],
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+                logger.info("Картинка %s отправлена. message_id=%s", idx, result.message_id)
+            except Exception as e:
+                logger.error("Ошибка при отправке картинки %s: %s", idx, e, exc_info=True)
+        
+        # Отправляем кнопку "Еще картинки"
+        keyboard_more = [[
+            InlineKeyboardButton(
+                "🔄 Еще картинки",
+                callback_data=f"more_images_for_publish:{draft_id}"
+            )
+        ]]
+        await self.app.bot.send_message(
+            chat_id=query.from_user.id,
+            text="Или запросите другие картинки:",
+            reply_markup=InlineKeyboardMarkup(keyboard_more)
+        )
+
     async def _handle_select_image_for_publish(
         self, query, draft_id: int, image_index: int
     ) -> None:
