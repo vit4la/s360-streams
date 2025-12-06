@@ -237,6 +237,22 @@ class ModerationBot:
                 sent_to = self.sent_drafts[draft_id]
                 if sent_to == set(config.MODERATOR_IDS):
                     continue
+            
+            # Пропускаем старые черновики (созданные более 24 часов назад)
+            # Это предотвращает отправку всех старых черновиков при перезапуске
+            import datetime
+            created_at_str = draft.get("created_at")
+            if created_at_str:
+                try:
+                    # Парсим дату создания (формат: YYYY-MM-DD HH:MM:SS)
+                    created_at = datetime.datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+                    now = datetime.datetime.now()
+                    age_hours = (now - created_at).total_seconds() / 3600
+                    if age_hours > 24:
+                        logger.debug("Пропускаем старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
+                        continue
+                except Exception as e:
+                    logger.warning("Ошибка при парсинге даты создания черновика: %s", e)
 
             # Отправляем черновик
             await self._send_draft_to_moderators(draft)
