@@ -1225,13 +1225,15 @@ class ModerationBot:
         self.app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
 
         # Регистрируем обработчики
+        # ВАЖНО: CallbackQueryHandler должен быть ПЕРВЫМ, чтобы не перехватывался MessageHandler
         logger.info("Регистрация обработчиков...")
+        self.app.add_handler(CallbackQueryHandler(self.callback_handler))
+        logger.info("Обработчик callback зарегистрирован (ПЕРВЫМ)")
         self.app.add_handler(CommandHandler("start", self.start_command))
         logger.info("Обработчик команд зарегистрирован")
-        self.app.add_handler(CallbackQueryHandler(self.callback_handler))
-        logger.info("Обработчик callback зарегистрирован")
-        self.app.add_handler(MessageHandler(filters.ALL, self.message_handler))
-        logger.info("Обработчик сообщений зарегистрирован")
+        # MessageHandler должен быть последним, чтобы не перехватывать callback queries
+        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.message_handler))
+        logger.info("Обработчик сообщений зарегистрирован (только TEXT, не COMMAND)")
 
         # Запускаем бота
         logger.info("Инициализация бота...")
