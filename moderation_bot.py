@@ -260,12 +260,20 @@ class ModerationBot:
 
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик callback-запросов от inline-кнопок."""
+        logger.info("=== CALLBACK HANDLER ВЫЗВАН ===")
         query = update.callback_query
+        if not query:
+            logger.warning("query is None в callback_handler")
+            return
+        
+        logger.info("query.data = %s", query.data)
         await query.answer()
 
         user_id = query.from_user.id
+        logger.info("user_id = %s", user_id)
 
         if not self._is_moderator(user_id):
+            logger.warning("Пользователь %s не является модератором", user_id)
             await query.edit_message_text("❌ У вас нет доступа к этому боту.")
             return
 
