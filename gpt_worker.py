@@ -181,7 +181,15 @@ class GPTWorker:
 
         try:
             logger.info("Запрос к Pexels API: query=%s", query)
-            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            # Используем те же прокси, что и для GPT (через переменные окружения)
+            import os
+            proxies = None
+            if os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY"):
+                proxies = {
+                    "http": os.environ.get("HTTP_PROXY"),
+                    "https": os.environ.get("HTTPS_PROXY")
+                }
+            resp = requests.get(url, headers=headers, params=params, timeout=10, proxies=proxies)
             resp.raise_for_status()
             data = resp.json()
 
