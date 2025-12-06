@@ -351,10 +351,15 @@ class Database:
         image_query = None
         try:
             image_query = row["image_query"]
-            if image_query == "":
+            logger.debug("get_draft_post: извлечен image_query из БД: %s (type: %s)", image_query, type(image_query))
+            if image_query == "" or image_query is None:
                 image_query = None
-        except (KeyError, IndexError):
-            pass
+                logger.debug("get_draft_post: image_query пустой или None, устанавливаю None")
+            else:
+                logger.debug("get_draft_post: image_query не пустой: %s", image_query)
+        except (KeyError, IndexError) as e:
+            logger.warning("get_draft_post: ошибка при извлечении image_query: %s", e)
+            image_query = None
         
         result = {
             "id": row["id"],

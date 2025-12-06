@@ -405,14 +405,18 @@ class ModerationBot:
         source_photo_file_id = draft.get("photo_file_id")
         image_query = draft.get("image_query")
         
-        # Логируем для отладки
-        logger.info("_handle_approve: draft_id=%s, image_query=%s, source_photo_file_id=%s", 
-                   draft_id, image_query, source_photo_file_id)
+        # Логируем для отладки - ВСЕ поля черновика
+        logger.info("_handle_approve: draft_id=%s", draft_id)
+        logger.info("_handle_approve: draft keys: %s", list(draft.keys()))
+        logger.info("_handle_approve: image_query=%s (type: %s)", image_query, type(image_query))
+        logger.info("_handle_approve: source_photo_file_id=%s", source_photo_file_id)
+        logger.info("_handle_approve: full draft: %s", draft)
         
         keyboard = []
         
-        # Кнопка "Выбрать картинку" - только если есть image_query (не пустая строка)
-        if image_query and image_query.strip():
+        # Кнопка "Выбрать картинку" - только если есть image_query (не пустая строка и не None)
+        if image_query and str(image_query).strip():
+            logger.info("_handle_approve: Добавляю кнопку 'Выбрать картинку' для draft_id=%s", draft_id)
             keyboard.append([
                 InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
             ])

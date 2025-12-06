@@ -292,10 +292,13 @@ class GPTWorker:
 
         # Ищем картинки через Pexels API (без стилизации - стилизация будет после выбора оператором)
         image_query = result.get("image_query", "")
+        # Логируем что получили от GPT
+        logger.info("_process_post: GPT вернул image_query: %s (type: %s, empty: %s)", 
+                   image_query, type(image_query), not image_query or image_query == "")
         final_image_url = None
         pexels_images_json = None
 
-        if image_query:
+        if image_query and str(image_query).strip():
             pexels_images = self._search_pexels_images(image_query)
             if pexels_images and len(pexels_images) > 0:
                 # Сохраняем картинки в JSON для выбора оператором
