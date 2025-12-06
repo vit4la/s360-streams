@@ -341,10 +341,10 @@ class ModerationBot:
             draft_id = int(parts[1])
             image_index = int(parts[2])
             await self._handle_select_image(query, draft_id, image_index)
-        elif action == "select_image_for_publish":
+        elif action == "select_image_for_publish" or action == "sel_img_pub":
             draft_id = int(parts[1])
             image_index = int(parts[2])
-            logger.info("Обработка select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
+            logger.info("Обработка select_image_for_publish/sel_img_pub: draft_id=%s, image_index=%s", draft_id, image_index)
             await self._handle_select_image_for_publish(query, draft_id, image_index)
         elif action == "select_image":
             draft_id = int(parts[1])
