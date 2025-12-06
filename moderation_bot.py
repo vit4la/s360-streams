@@ -320,6 +320,10 @@ class ModerationBot:
             draft_id = int(parts[1])
             image_index = int(parts[2])
             await self._handle_select_image(query, draft_id, image_index)
+        elif action == "select_image_for_publish":
+            draft_id = int(parts[1])
+            image_index = int(parts[2])
+            await self._handle_select_image_for_publish(query, draft_id, image_index)
         else:
             await query.edit_message_text("❌ Неизвестное действие.")
 
@@ -334,7 +338,41 @@ class ModerationBot:
             target_channel = config.TARGET_CHANNEL_IDS[0]
             self.publishing_states[user_id] = (draft_id, [target_channel])
             
-            # Проверяем есть ли исходная картинка
+            # Если есть стилизованная картинка, сразу публикуем
+            if draft.get("final_image_url"):
+                await self._publish_draft(draft_id, [target_channel])
+                await query.edit_message_text("✅ Пост опубликован!")
+                return
+            
+            # Если нет стилизованной картинки, но есть картинки из Pexels - показываем для выбора
+            import json
+            pexels_images_json = draft.get("pexels_images_json")
+            if pexels_images_json:
+                try:
+                    pexels_images = json.loads(pexels_images_json)
+                    if pexels_images and len(pexels_images) > 0:
+                        await query.edit_message_text("📸 Выберите картинку для публикации:")
+                        # Показываем картинки для выбора
+                        for idx, pexels_img in enumerate(pexels_images):
+                            keyboard = [[
+                                InlineKeyboardButton(
+                                    "✅ Выбрать эту",
+                                    callback_data=f"select_image_for_publish:{draft_id}:{idx}"
+                                )
+                            ]]
+                            try:
+                                await self.app.bot.send_photo(
+                                    chat_id=query.from_user.id,
+                                    photo=pexels_img["url"],
+                                    reply_markup=InlineKeyboardMarkup(keyboard),
+                                )
+                            except Exception as e:
+                                logger.error("Ошибка при отправке картинки: %s", e)
+                        return
+                except json.JSONDecodeError:
+                    pass
+            
+            # Если нет картинок из Pexels, показываем стандартные варианты
             source_photo_file_id = draft.get("photo_file_id")
             
             keyboard = []
@@ -745,38 +783,29 @@ class ModerationBot:
             await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
             return
 
-        # Стилизуем все картинки
-        styled_images = []
-        for idx, pexels_img in enumerate(pexels_images):
-            final_url = self._render_image(pexels_img["url"], draft["title"])
-            if final_url:
-                styled_images.append({
-                    "url": final_url,
-                    "index": idx
-                })
+        # Сохраняем картинки в БД
+        import json
+        pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
+        self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
 
-        if not styled_images:
-            await query.edit_message_text("❌ Не удалось стилизовать картинки. Попробуйте позже.")
-            return
-
-        # Показываем все картинки для выбора
+        # Показываем исходные картинки из Pexels для выбора (без стилизации)
         await query.edit_message_text(
-            f"📸 Найдено {len(styled_images)} картинок. Выберите одну:"
+            f"📸 Найдено {len(pexels_images)} картинок. Выберите одну:"
         )
 
-        # Отправляем каждую картинку с кнопкой выбора
-        for styled_img in styled_images:
+        # Отправляем каждую исходную картинку с кнопкой выбора
+        for idx, pexels_img in enumerate(pexels_images):
             keyboard = [[
                 InlineKeyboardButton(
                     "✅ Выбрать эту",
-                    callback_data=f"select_image:{draft_id}:{styled_img['index']}"
+                    callback_data=f"select_image:{draft_id}:{idx}"
                 )
             ]]
 
             try:
                 await self.app.bot.send_photo(
                     chat_id=query.from_user.id,
-                    photo=styled_img["url"],  # Сервис уже возвращает полный URL
+                    photo=pexels_img["url"],  # Исходная картинка из Pexels
                     reply_markup=InlineKeyboardMarkup(keyboard),
                 )
             except Exception as e:
@@ -789,18 +818,33 @@ class ModerationBot:
             await query.edit_message_text("❌ Черновик не найден.")
             return
 
-        image_query = draft.get("image_query")
-        if not image_query:
-            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
-            return
+        # Получаем картинки из БД или из Pexels
+        import json
+        pexels_images = None
+        pexels_images_json = draft.get("pexels_images_json")
+        if pexels_images_json:
+            try:
+                pexels_images = json.loads(pexels_images_json)
+            except json.JSONDecodeError:
+                logger.warning("Не удалось распарсить pexels_images_json для черновика: draft_id=%s", draft_id)
+        
+        # Если картинок нет в БД, запрашиваем заново
+        if not pexels_images:
+            image_query = draft.get("image_query")
+            if not image_query:
+                await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+                return
+            pexels_images = self._search_pexels_images(image_query)
+            if pexels_images:
+                pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
+                self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
 
-        # Получаем картинки из Pexels
-        pexels_images = self._search_pexels_images(image_query)
         if not pexels_images or image_index >= len(pexels_images):
             await query.edit_message_text("❌ Картинка не найдена.")
             return
 
         # Стилизуем выбранную картинку
+        await query.edit_message_text("🎨 Стилизую картинку...")
         selected_image_url = pexels_images[image_index]["url"]
         final_url = self._render_image(selected_image_url, draft["title"])
 

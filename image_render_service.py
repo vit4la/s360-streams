@@ -50,7 +50,17 @@ def download_image(url: str) -> Optional[Image.Image]:
     """
     try:
         logger.info("Скачивание изображения: %s", url)
-        resp = requests.get(url, timeout=15)
+        # Используем прокси, если указан в переменных окружения
+        proxies = None
+        proxy_url = os.getenv("OPENAI_PROXY") or os.getenv("HTTP_PROXY")
+        if proxy_url:
+            if proxy_url.startswith("http://"):
+                proxy_url = proxy_url.replace("http://", "socks5://", 1)
+            proxies = {
+                "http": proxy_url,
+                "https": proxy_url
+            }
+        resp = requests.get(url, timeout=15, proxies=proxies)
         resp.raise_for_status()
         img = Image.open(BytesIO(resp.content))
         # Конвертируем в RGB, если нужно (для JPEG)

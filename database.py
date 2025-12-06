@@ -85,6 +85,10 @@ class Database:
             cursor.execute("ALTER TABLE draft_posts ADD COLUMN final_image_url TEXT")
         except sqlite3.OperationalError:
             pass  # Колонка уже существует
+        try:
+            cursor.execute("ALTER TABLE draft_posts ADD COLUMN pexels_images_json TEXT")
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
 
         # Индексы для быстрого поиска
         cursor.execute("""
@@ -204,6 +208,7 @@ class Database:
         gpt_response_raw: Optional[str] = None,
         image_query: Optional[str] = None,
         final_image_url: Optional[str] = None,
+        pexels_images_json: Optional[str] = None,
     ) -> int:
         """Добавить черновик для модерации.
 
@@ -224,9 +229,9 @@ class Database:
 
         cursor.execute("""
             INSERT INTO draft_posts 
-            (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_moderation')
-        """, (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url))
+            (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url, pexels_images_json, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_moderation')
+        """, (source_post_id, title, body, hashtags, gpt_response_raw, image_query, final_image_url, pexels_images_json))
 
         draft_id = cursor.lastrowid
         conn.commit()
@@ -254,6 +259,7 @@ class Database:
                 d.gpt_response_raw,
                 d.image_query,
                 d.final_image_url,
+                d.pexels_images_json,
                 d.created_at,
                 s.channel_id,
                 s.message_id,
@@ -280,6 +286,7 @@ class Database:
                 "gpt_response_raw": row["gpt_response_raw"],
                 "image_query": row["image_query"] if "image_query" in row.keys() else None,
                 "final_image_url": row["final_image_url"] if "final_image_url" in row.keys() else None,
+                "pexels_images_json": row["pexels_images_json"] if "pexels_images_json" in row.keys() else None,
                 "created_at": row["created_at"],
                 "channel_id": row["channel_id"],
                 "message_id": row["message_id"],
@@ -312,6 +319,7 @@ class Database:
                 d.gpt_response_raw,
                 d.image_query,
                 d.final_image_url,
+                d.pexels_images_json,
                 d.status,
                 d.target_chat_id,
                 d.target_message_id,
@@ -339,6 +347,7 @@ class Database:
             "gpt_response_raw": row["gpt_response_raw"],
             "image_query": row["image_query"] if "image_query" in row.keys() else None,
             "final_image_url": row["final_image_url"] if "final_image_url" in row.keys() else None,
+            "pexels_images_json": row["pexels_images_json"] if "pexels_images_json" in row.keys() else None,
             "status": row["status"],
             "target_chat_id": row["target_chat_id"],
             "target_message_id": row["target_message_id"],
@@ -359,6 +368,7 @@ class Database:
         hashtags: Optional[str] = None,
         status: Optional[str] = None,
         final_image_url: Optional[str] = None,
+        pexels_images_json: Optional[str] = None,
     ) -> None:
         """Обновить черновик.
 
@@ -391,6 +401,10 @@ class Database:
         if final_image_url is not None:
             updates.append("final_image_url = ?")
             params.append(final_image_url)
+
+        if pexels_images_json is not None:
+            updates.append("pexels_images_json = ?")
+            params.append(pexels_images_json)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")

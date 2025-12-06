@@ -280,19 +280,18 @@ class GPTWorker:
             # Можно пометить пост как failed или оставить new для повторной попытки
             return
 
-        # Ищем картинки через Pexels API
+        # Ищем картинки через Pexels API (без стилизации - стилизация будет после выбора оператором)
         image_query = result.get("image_query", "")
         final_image_url = None
+        pexels_images_json = None
 
         if image_query:
             pexels_images = self._search_pexels_images(image_query)
             if pexels_images and len(pexels_images) > 0:
-                # Берём первую картинку и стилизуем её
-                first_image_url = pexels_images[0]["url"]
-                final_image_url = self._render_image(first_image_url, result["title"])
-                
-                if not final_image_url:
-                    logger.warning("Не удалось стилизовать картинку для поста: post_id=%s", post_id)
+                # Сохраняем картинки в JSON для выбора оператором
+                import json
+                pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
+                logger.info("Найдено %s картинок в Pexels для поста: post_id=%s", len(pexels_images), post_id)
             else:
                 logger.warning("Не найдены картинки в Pexels для запроса: %s", image_query)
         else:
@@ -308,6 +307,7 @@ class GPTWorker:
                 gpt_response_raw=result["raw_response"],
                 image_query=image_query,
                 final_image_url=final_image_url,
+                pexels_images_json=pexels_images_json,
             )
 
             # Отмечаем исходный пост как обработанный
