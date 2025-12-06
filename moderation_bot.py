@@ -1212,14 +1212,41 @@ class ModerationBot:
             try:
                 if image_to_use:
                     # Отправляем с фото
-                    # Если это URL (стилизованная картинка), используем URL
+                    # Если это URL (стилизованная картинка), скачиваем и отправляем как файл
                     # Если это file_id (исходная картинка), используем file_id
                     if image_to_use.startswith("http://") or image_to_use.startswith("https://"):
-                        message = await self.app.bot.send_photo(
-                            chat_id=channel_id,
-                            photo=image_to_use,
-                            caption=post_text,
-                        )
+                        # Скачиваем картинку по URL
+                        logger.info("Скачивание картинки для публикации: %s", image_to_use)
+                        try:
+                            import httpx
+                            from io import BytesIO
+                            proxy_url = None
+                            if config.OPENAI_PROXY:
+                                proxy_url = config.OPENAI_PROXY
+                                if proxy_url.startswith("http://"):
+                                    proxy_url = proxy_url.replace("http://", "socks5://", 1)
+                            
+                            with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                                resp = client.get(image_to_use)
+                                resp.raise_for_status()
+                                image_data = BytesIO(resp.content)
+                                image_data.name = "image.jpg"  # Нужно для Telegram API
+                            
+                            # Отправляем как файл
+                            message = await self.app.bot.send_photo(
+                                chat_id=channel_id,
+                                photo=image_data,
+                                caption=post_text,
+                            )
+                            logger.info("Картинка отправлена успешно в канал %s", channel_id)
+                        except Exception as download_error:
+                            logger.error("Ошибка при скачивании/отправке картинки: %s", download_error, exc_info=True)
+                            # Если не удалось отправить с фото, отправляем только текст
+                            message = await self.app.bot.send_message(
+                                chat_id=channel_id,
+                                text=post_text,
+                            )
+                            errors.append(f"Канал {channel_id}: не удалось отправить фото ({str(download_error)})")
                     else:
                         # Это file_id
                         message = await self.app.bot.send_photo(
