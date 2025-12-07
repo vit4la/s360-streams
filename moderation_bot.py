@@ -267,6 +267,15 @@ class ModerationBot:
     async def _check_and_send_new_drafts(self) -> None:
         """Проверить новые черновики и отправить их модераторам."""
         pending_drafts = self.db.get_pending_draft_posts()
+        
+        # Ограничиваем отправку до 1 поста за раз для тестирования
+        # Чтобы не было путаницы с несколькими постами одновременно
+        MAX_DRAFTS_PER_CHECK = 1
+        pending_drafts = pending_drafts[:MAX_DRAFTS_PER_CHECK]
+        
+        if pending_drafts:
+            logger.info("Найдено %s новых черновиков, отправляю первый (лимит: %s)", 
+                       len(self.db.get_pending_draft_posts()), MAX_DRAFTS_PER_CHECK)
 
         for draft in pending_drafts:
             draft_id = draft["id"]
