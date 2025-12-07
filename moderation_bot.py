@@ -414,12 +414,11 @@ class ModerationBot:
         
         keyboard = []
         
-        # Кнопка "Выбрать картинку" - только если есть image_query (не пустая строка и не None)
-        if image_query and str(image_query).strip():
-            logger.info("_handle_approve: Добавляю кнопку 'Выбрать картинку' для draft_id=%s", draft_id)
-            keyboard.append([
-                InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
-            ])
+        # Кнопка "Выбрать картинку" - ВСЕГДА показываем (если нет image_query, сгенерируем при нажатии)
+        keyboard.append([
+            InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
+        ])
+        logger.info("_handle_approve: Добавляю кнопку 'Выбрать картинку' для draft_id=%s (image_query=%s)", draft_id, image_query)
         
         # Кнопка "Без картинки"
         keyboard.append([
