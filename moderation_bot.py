@@ -1682,8 +1682,8 @@ class ModerationBot:
             
             # Передаём URL DALL-E напрямую в сервис стилизации
             # Сервис сам скачает изображение и обработает его
-            # Извлекаем title для стилизации
-            title_for_render = title[:50] if title else "Tennis News"
+            # Извлекаем title для стилизации из оригинального текста (первые 50 символов)
+            title_for_render = original_text.strip()[:50] if original_text else "Tennis News"
             final_url = self._render_image(image_url, title_for_render)
             
             # Если стилизация не удалась, используем оригинальное изображение DALL-E
