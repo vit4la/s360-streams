@@ -91,48 +91,48 @@ class GPTWorker:
                 # Парсим JSON
                 result = json.loads(content)
 
-                # Проверяем наличие обязательных полей
-                if "title" not in result or "body" not in result or "hashtags" not in result:
-                    logger.error("GPT вернул неполный ответ (нет title/body/hashtags): %s", result)
+                # Проверяем наличие обязательных полей (новый формат: html_text и image_query)
+                if "html_text" not in result:
+                    logger.error("GPT вернул ответ БЕЗ html_text (обязательное поле): %s", result)
+                    logger.error("Доступные ключи в ответе GPT: %s", list(result.keys()))
                     return None
 
                 # Проверяем наличие image_query - теперь это обязательное поле
                 if "image_query" not in result or not result.get("image_query"):
-                    logger.error("GPT вернул ответ БЕЗ image_query (обязательное поле): %s", result)
-                    logger.error("Доступные ключи в ответе GPT: %s", list(result.keys()))
-                    # Не возвращаем None, а пытаемся сгенерировать image_query из title
-                    title = result.get("title", "")
-                    # Простая генерация image_query из заголовка
+                    logger.warning("GPT вернул ответ БЕЗ image_query, генерирую из текста")
+                    html_text = result.get("html_text", "")
+                    # Простая генерация image_query из HTML-текста
                     image_query = "tennis player"  # Дефолтное значение
-                    if title:
-                        # Пытаемся извлечь ключевые слова из заголовка
-                        title_lower = title.lower()
-                        if "матч" in title_lower or "match" in title_lower:
+                    if html_text:
+                        html_lower = html_text.lower()
+                        if "матч" in html_lower or "match" in html_lower:
                             image_query = "tennis match"
-                        elif "игрок" in title_lower or "player" in title_lower:
+                        elif "игрок" in html_lower or "player" in html_lower or "теннисист" in html_lower:
                             image_query = "tennis player"
-                        elif "турнир" in title_lower or "tournament" in title_lower:
+                        elif "турнир" in html_lower or "tournament" in html_lower:
                             image_query = "tennis tournament"
+                        elif "чемпионат" in html_lower or "championship" in html_lower:
+                            image_query = "tennis championship"
+                        elif "wta" in html_lower:
+                            image_query = "tennis WTA match"
+                        elif "atp" in html_lower:
+                            image_query = "tennis ATP match"
                         else:
                             image_query = "tennis sport"
-                    logger.warning("Сгенерирован image_query по умолчанию: %s", image_query)
+                    logger.info("Сгенерирован image_query: %s", image_query)
                 else:
                     image_query = result.get("image_query", "").strip()
                     if not image_query:
                         logger.warning("GPT вернул пустой image_query, используем дефолт")
                         image_query = "tennis player"
 
-                # Преобразуем хэштеги в строку, если они в виде списка
-                hashtags = result["hashtags"]
-                if isinstance(hashtags, list):
-                    hashtags_str = " ".join(hashtags)
-                else:
-                    hashtags_str = str(hashtags)
+                html_text = result.get("html_text", "").strip()
+                if not html_text:
+                    logger.error("GPT вернул пустой html_text")
+                    return None
 
                 return {
-                    "title": result["title"],
-                    "body": result["body"],
-                    "hashtags": hashtags_str,
+                    "html_text": html_text,
                     "image_query": image_query,
                     "raw_response": content,
                 }
@@ -334,12 +334,39 @@ class GPTWorker:
             logger.debug("GPT не вернул image_query для поста: post_id=%s", post_id)
 
         # Создаём черновик
+        # Извлекаем html_text из результата GPT
+        html_text = result.get("html_text", "")
+        
+        # Для обратной совместимости: если есть старые поля title/body/hashtags, используем их
+        # Но теперь используем html_text как body, а title и hashtags извлекаем из HTML
+        title = ""
+        hashtags = ""
+        
+        # Пытаемся извлечь заголовок из HTML (первая строка с <b>)
+        import re
+        title_match = re.search(r'<b>(.*?)</b>', html_text, re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip()
+            # Убираем эмодзи из начала заголовка для title
+            title = re.sub(r'^[🎾🏆⭐📊🔥💥⏱🟢❄️]+', '', title).strip()
+        
+        # Извлекаем хештеги из конца HTML
+        hashtags_match = re.search(r'(#\w+(?:\s+#\w+)*)', html_text)
+        if hashtags_match:
+            hashtags = hashtags_match.group(1)
+        
+        # Если не удалось извлечь, используем дефолты
+        if not title:
+            title = html_text[:70] if len(html_text) > 70 else html_text
+        if not hashtags:
+            hashtags = "#теннис #Setka360"
+        
         try:
             draft_id = self.db.add_draft_post(
                 source_post_id=post_id,
-                title=result["title"],
-                body=result["body"],
-                hashtags=result["hashtags"],
+                title=title,
+                body=html_text,  # Сохраняем HTML-текст в body
+                hashtags=hashtags,
                 gpt_response_raw=result["raw_response"],
                 image_query=image_query,
                 final_image_url=final_image_url,

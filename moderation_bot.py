@@ -87,12 +87,24 @@ class ModerationBot:
         else:
             original_preview = original_text
 
-        # Вариант GPT
-        title = draft["title"]
+        # Вариант GPT - теперь body содержит HTML-текст
         body = draft["body"]
-        hashtags = draft["hashtags"]
+        
+        # Проверяем, содержит ли body HTML-теги (новый формат) или это старый формат
+        if "<b>" in body or "<i>" in body:
+            # Новый формат - HTML
+            message = f"""*{source_info}*
 
-        message = f"""*{source_info}*
+*Оригинал:*
+{original_preview}
+
+*Вариант GPT:*
+{body}"""
+        else:
+            # Старый формат - Markdown (для обратной совместимости)
+            title = draft.get("title", "")
+            hashtags = draft.get("hashtags", "")
+            message = f"""*{source_info}*
 
 *Оригинал:*
 {original_preview}
@@ -181,28 +193,33 @@ class ModerationBot:
                 # Если есть стилизованная картинка, отправляем её с текстом
                 if final_image_url:
                     try:
+                        # Определяем parse_mode: HTML если есть HTML-теги, иначе Markdown
+                        parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                         await self.app.bot.send_photo(
                             chat_id=moderator_id,
                             photo=final_image_url,  # Сервис уже возвращает полный URL
                             caption=message_text,
-                            parse_mode="Markdown",
+                            parse_mode=parse_mode,
                             reply_markup=reply_markup,
                         )
                     except Exception as photo_error:
                         # Если не удалось отправить фото, отправляем только текст
                         logger.warning("Не удалось отправить фото, отправляем только текст: %s", photo_error)
+                        # Определяем parse_mode: HTML если есть HTML-теги, иначе Markdown
+                        parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                         await self.app.bot.send_message(
                             chat_id=moderator_id,
                             text=message_text,
-                            parse_mode="Markdown",
+                            parse_mode=parse_mode,
                             reply_markup=reply_markup,
                         )
                 else:
                     # Нет картинки - отправляем только текст
+                    parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                     await self.app.bot.send_message(
                         chat_id=moderator_id,
                         text=message_text,
-                        parse_mode="Markdown",
+                        parse_mode=parse_mode,
                         reply_markup=reply_markup,
                     )
                 
