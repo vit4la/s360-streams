@@ -999,10 +999,15 @@ class ModerationBot:
                     image_data.name = "image.jpg"  # Нужно для Telegram API
                 
                 # Отправляем как файл
+                # Ограничиваем длину caption до 1024 символов (лимит Telegram)
+                caption = message_text[:1024] if len(message_text) > 1024 else message_text
+                if len(message_text) > 1024:
+                    logger.warning("Caption обрезан с %s до 1024 символов", len(message_text))
+                
                 await self.app.bot.send_photo(
                     chat_id=query.from_user.id,
                     photo=image_data,
-                    caption=message_text,
+                    caption=caption,
                     parse_mode=parse_mode,
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
