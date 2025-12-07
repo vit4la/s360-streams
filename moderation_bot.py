@@ -183,6 +183,13 @@ class ModerationBot:
         message_text = self._format_draft_message(draft)
         final_image_url = draft.get("final_image_url")
         image_query = draft.get("image_query")
+        
+        # Логируем для отладки
+        body = draft.get("body", "")
+        logger.info("_send_draft_to_moderators: draft_id=%s, body содержит эмоджи 🎾: %s, body (first 200): %s", 
+                   draft_id, "🎾" in body, body[:200])
+        logger.info("_send_draft_to_moderators: message_text содержит эмоджи 🎾: %s, message_text (first 200): %s", 
+                   "🎾" in message_text, message_text[:200])
 
         # Кнопки действий
         keyboard = [
