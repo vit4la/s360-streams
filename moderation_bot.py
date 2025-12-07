@@ -460,8 +460,68 @@ class ModerationBot:
     async def _handle_approve(
         self, query, draft_id: int, draft: Dict
     ) -> None:
-        """Обработать нажатие 'Опубликовать' - показать варианты выбора картинки."""
+        """Обработать нажатие 'Опубликовать' - показать варианты выбора картинки или сразу опубликовать."""
         user_id = query.from_user.id
+
+        # Проверяем, есть ли уже готовое изображение (например, сгенерированное в стиле Симпсонов)
+        final_image_url = draft.get("final_image_url")
+        
+        # Если есть final_image_url, публикуем сразу
+        if final_image_url:
+            logger.info("_handle_approve: Найдено final_image_url, публикуем сразу без выбора картинки")
+            # Сохраняем состояние публикации
+            if len(config.TARGET_CHANNEL_IDS) == 1:
+                target_channel = config.TARGET_CHANNEL_IDS[0]
+                self.publishing_states[user_id] = (draft_id, [target_channel])
+                # Публикуем сразу
+                await self._publish_draft(draft_id, [target_channel], user_id=user_id)
+                # Очищаем состояние
+                if user_id in self.publishing_states:
+                    del self.publishing_states[user_id]
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption="✅ Пост опубликован!")
+                    else:
+                        await query.edit_message_text("✅ Пост опубликован!")
+                except:
+                    await self.app.bot.send_message(chat_id=user_id, text="✅ Пост опубликован!")
+                return
+            else:
+                # Если несколько каналов, показываем выбор каналов
+                self.publishing_states[user_id] = (draft_id, [])
+                keyboard_channels = []
+                for channel_id in config.TARGET_CHANNEL_IDS:
+                    channel_name = channel_id if isinstance(channel_id, str) else str(channel_id)
+                    keyboard_channels.append([
+                        InlineKeyboardButton(
+                            f"📢 {channel_name}",
+                            callback_data=f"select_channel:{draft_id}:{channel_id}"
+                        )
+                    ])
+                keyboard_channels.append([
+                    InlineKeyboardButton(
+                        "📢 Выбрать несколько",
+                        callback_data=f"select_multiple:{draft_id}"
+                    )
+                ])
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(
+                            caption="📢 Выберите канал(ы) для публикации:",
+                            reply_markup=InlineKeyboardMarkup(keyboard_channels)
+                        )
+                    else:
+                        await query.edit_message_text(
+                            "📢 Выберите канал(ы) для публикации:",
+                            reply_markup=InlineKeyboardMarkup(keyboard_channels)
+                        )
+                except:
+                    await self.app.bot.send_message(
+                        chat_id=user_id,
+                        text="📢 Выберите канал(ы) для публикации:",
+                        reply_markup=InlineKeyboardMarkup(keyboard_channels)
+                    )
+                return
 
         # Сохраняем состояние публикации
         if len(config.TARGET_CHANNEL_IDS) == 1:
@@ -554,6 +614,25 @@ class ModerationBot:
         draft = self.db.get_draft_post(draft_id)
         if not draft:
             await query.edit_message_text("❌ Черновик не найден.")
+            return
+        
+        # Проверяем, есть ли уже готовое изображение (например, сгенерированное в стиле Симпсонов)
+        final_image_url = draft.get("final_image_url")
+        
+        # Если есть final_image_url, публикуем сразу
+        if final_image_url:
+            logger.info("_handle_channel_selection: Найдено final_image_url, публикуем сразу")
+            await self._publish_draft(draft_id, [channel_id], user_id=user_id)
+            # Очищаем состояние
+            if user_id in self.publishing_states:
+                del self.publishing_states[user_id]
+            try:
+                if query.message.photo:
+                    await query.edit_message_caption(caption="✅ Пост опубликован!")
+                else:
+                    await query.edit_message_text("✅ Пост опубликован!")
+            except:
+                await self.app.bot.send_message(chat_id=user_id, text="✅ Пост опубликован!")
             return
             
         source_photo_file_id = draft.get("photo_file_id")
@@ -676,7 +755,24 @@ class ModerationBot:
 
         # Проверяем есть ли исходная картинка
         draft = self.db.get_draft_post(draft_id)
-        source_photo_file_id = draft.get("photo_file_id") if draft else None
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+        
+        # Проверяем, есть ли уже готовое изображение (например, сгенерированное в стиле Симпсонов)
+        final_image_url = draft.get("final_image_url")
+        
+        # Если есть final_image_url, публикуем сразу
+        if final_image_url:
+            logger.info("_handle_publish_channels_done: Найдено final_image_url, публикуем сразу")
+            await self._publish_draft(draft_id, selected_channels, user_id=user_id)
+            # Очищаем состояние
+            if user_id in self.publishing_states:
+                del self.publishing_states[user_id]
+            await query.edit_message_text("✅ Пост опубликован!")
+            return
+        
+        source_photo_file_id = draft.get("photo_file_id")
         
         keyboard = []
         if source_photo_file_id:
