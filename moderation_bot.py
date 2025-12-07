@@ -1326,13 +1326,22 @@ class ModerationBot:
             logger.error("Черновик не найден для публикации: draft_id=%s", draft_id)
             return
 
-        title = draft["title"]
         body = draft["body"]
-        hashtags = draft["hashtags"]
         final_image_url = draft.get("final_image_url")
 
         # Формируем текст поста
-        post_text = f"{title}\n\n{body}\n\n{hashtags}"
+        # Если body содержит HTML-теги (новый формат), используем его напрямую
+        # Иначе формируем из title/body/hashtags (старый формат для обратной совместимости)
+        if "<b>" in body or "<i>" in body:
+            # Новый формат - body уже содержит весь HTML-текст с заголовком и хештегами
+            post_text = body
+            parse_mode = "HTML"
+        else:
+            # Старый формат - формируем из отдельных полей
+            title = draft.get("title", "")
+            hashtags = draft.get("hashtags", "")
+            post_text = f"{title}\n\n{body}\n\n{hashtags}"
+            parse_mode = "Markdown"
 
         # Определяем, какую картинку использовать
         # Приоритет: final_image_url > photo_file_id
