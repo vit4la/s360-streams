@@ -91,14 +91,26 @@ class ModerationBot:
         body = draft["body"]
         
         # Проверяем, содержит ли body HTML-теги (новый формат) или это старый формат
-        if "<b>" in body or "<i>" in body:
-            # Новый формат - HTML
-            message = f"""*{source_info}*
+        has_html_tags = (
+            "<b>" in body or "</b>" in body or
+            "<i>" in body or "</i>" in body or
+            "<u>" in body or "</u>" in body or
+            "<s>" in body or "</s>" in body or
+            "<a " in body or "</a>" in body
+        )
+        
+        if has_html_tags:
+            # Новый формат - HTML (используем HTML для всего сообщения)
+            # Экранируем HTML-спецсимволы в original_preview и source_info
+            import html
+            escaped_source = html.escape(source_info)
+            escaped_original = html.escape(original_preview)
+            message = f"""<b>{escaped_source}</b>
 
-*Оригинал:*
-{original_preview}
+<b>Оригинал:</b>
+{escaped_original}
 
-*Вариант GPT:*
+<b>Вариант GPT:</b>
 {body}"""
         else:
             # Старый формат - Markdown (для обратной совместимости)
@@ -190,11 +202,20 @@ class ModerationBot:
 
         for moderator_id in config.MODERATOR_IDS:
             try:
+                # Определяем parse_mode на основе body (не message_text, т.к. message_text может содержать Markdown-разметку)
+                body = draft["body"]
+                has_html_tags = (
+                    "<b>" in body or "</b>" in body or
+                    "<i>" in body or "</i>" in body or
+                    "<u>" in body or "</u>" in body or
+                    "<s>" in body or "</s>" in body or
+                    "<a " in body or "</a>" in body
+                )
+                parse_mode = "HTML" if has_html_tags else "Markdown"
+                
                 # Если есть стилизованная картинка, отправляем её с текстом
                 if final_image_url:
                     try:
-                        # Определяем parse_mode: HTML если есть HTML-теги, иначе Markdown
-                        parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                         await self.app.bot.send_photo(
                             chat_id=moderator_id,
                             photo=final_image_url,  # Сервис уже возвращает полный URL
@@ -205,8 +226,6 @@ class ModerationBot:
                     except Exception as photo_error:
                         # Если не удалось отправить фото, отправляем только текст
                         logger.warning("Не удалось отправить фото, отправляем только текст: %s", photo_error)
-                        # Определяем parse_mode: HTML если есть HTML-теги, иначе Markdown
-                        parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                         await self.app.bot.send_message(
                             chat_id=moderator_id,
                             text=message_text,
@@ -215,7 +234,6 @@ class ModerationBot:
                         )
                 else:
                     # Нет картинки - отправляем только текст
-                    parse_mode = "HTML" if ("<b>" in message_text or "<i>" in message_text) else "Markdown"
                     await self.app.bot.send_message(
                         chat_id=moderator_id,
                         text=message_text,
@@ -990,9 +1008,20 @@ class ModerationBot:
             "✅ Текст обновлён. Превью:",
             reply_markup=reply_markup,
         )
+        # Определяем parse_mode на основе body
+        body = draft["body"]
+        has_html_tags = (
+            "<b>" in body or "</b>" in body or
+            "<i>" in body or "</i>" in body or
+            "<u>" in body or "</u>" in body or
+            "<s>" in body or "</s>" in body or
+            "<a " in body or "</a>" in body
+        )
+        parse_mode = "HTML" if has_html_tags else "Markdown"
+        
         await update.message.reply_text(
             message_text,
-            parse_mode="Markdown",
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
 
@@ -1112,10 +1141,21 @@ class ModerationBot:
                 InlineKeyboardButton("♻️ Другая картинка", callback_data=f"change_image:{draft_id}")
             ])
 
+        # Определяем parse_mode на основе body
+        body = updated_draft["body"]
+        has_html_tags = (
+            "<b>" in body or "</b>" in body or
+            "<i>" in body or "</i>" in body or
+            "<u>" in body or "</u>" in body or
+            "<s>" in body or "</s>" in body or
+            "<a " in body or "</a>" in body
+        )
+        parse_mode = "HTML" if has_html_tags else "Markdown"
+        
         try:
             await query.edit_message_caption(
                 caption=message_text,
-                parse_mode="Markdown",
+                parse_mode=parse_mode,
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
         except:
@@ -1124,7 +1164,7 @@ class ModerationBot:
                 chat_id=query.from_user.id,
                 photo=final_url,  # Сервис уже возвращает полный URL
                 caption=message_text,
-                parse_mode="Markdown",
+                parse_mode=parse_mode,
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
 
