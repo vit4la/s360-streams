@@ -1621,6 +1621,8 @@ class ModerationBot:
                                 image_data.name = "image.jpg"  # Нужно для Telegram API
                             
                             # Отправляем как файл
+                            logger.info("Отправка фото с caption в канал %s, caption (first 300): %s, parse_mode=%s", 
+                                       channel_id, post_text[:300] if post_text else "EMPTY", parse_mode)
                             message = await self.app.bot.send_photo(
                                 chat_id=channel_id,
                                 photo=image_data,
@@ -1685,6 +1687,8 @@ class ModerationBot:
                         logger.error("ОШИБКА: post_text пустой для канала %s! Пропускаю публикацию.", channel_id)
                         errors.append(f"Канал {channel_id}: post_text пустой")
                         continue
+                    logger.info("Отправка текста в канал %s, text (first 300): %s, parse_mode=%s", 
+                               channel_id, post_text[:300] if post_text else "EMPTY", parse_mode)
                     message = await self.app.bot.send_message(
                         chat_id=channel_id,
                         text=post_text,
