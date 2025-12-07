@@ -352,6 +352,10 @@ class GPTWorker:
         # Извлекаем html_text из результата GPT
         html_text = result.get("html_text", "")
         
+        # Логируем что получили от GPT
+        logger.info("_process_post: GPT вернул html_text (first 300 chars): %s", html_text[:300] if html_text else "EMPTY")
+        logger.info("_process_post: html_text содержит эмоджи 🎾: %s", "🎾" in html_text if html_text else False)
+        
         # Если html_text нет, но есть старый формат (title/body/hashtags), конвертируем в HTML
         if not html_text:
             logger.warning("GPT вернул старый формат (title/body/hashtags), конвертирую в HTML")
@@ -364,6 +368,7 @@ class GPTWorker:
             # Формируем HTML-текст с эмодзи и форматированием
             html_text = f"🎾 <b>{title}</b>\n\n{body}\n\n{hashtags}"
             logger.info("Сконвертирован старый формат в HTML: %s", html_text[:200])
+            logger.info("Сконвертированный html_text содержит эмоджи 🎾: %s", "🎾" in html_text)
         
         # Извлекаем title и hashtags из HTML для БД
         title = ""
@@ -387,6 +392,10 @@ class GPTWorker:
             title = html_text[:70] if len(html_text) > 70 else html_text
         if not hashtags:
             hashtags = "#теннис #Setka360"
+        
+        # Логируем что сохраняем в БД
+        logger.info("_process_post: Сохраняю в БД html_text (first 300 chars): %s", html_text[:300] if html_text else "EMPTY")
+        logger.info("_process_post: html_text содержит эмоджи 🎾 перед сохранением: %s", "🎾" in html_text if html_text else False)
         
         try:
             draft_id = self.db.add_draft_post(
