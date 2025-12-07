@@ -86,16 +86,31 @@ class GPTWorker:
                 )
 
                 content = response.choices[0].message.content
-                logger.debug("Получен ответ от GPT: %s", content)
+                logger.info("Получен ответ от GPT (первые 500 символов): %s", content[:500])
 
                 # Парсим JSON
                 result = json.loads(content)
+                logger.info("Распарсенный JSON от GPT, ключи: %s", list(result.keys()))
 
                 # Проверяем наличие обязательных полей (новый формат: html_text и image_query)
                 if "html_text" not in result:
                     logger.error("GPT вернул ответ БЕЗ html_text (обязательное поле): %s", result)
                     logger.error("Доступные ключи в ответе GPT: %s", list(result.keys()))
-                    return None
+                    # Проверяем, может быть старый формат (title/body/hashtags)?
+                    if "title" in result and "body" in result:
+                        logger.warning("GPT вернул старый формат (title/body), конвертирую в HTML")
+                        # Конвертируем старый формат в HTML
+                        title = result.get("title", "")
+                        body = result.get("body", "")
+                        hashtags = result.get("hashtags", "")
+                        if isinstance(hashtags, list):
+                            hashtags = " ".join(hashtags)
+                        # Формируем HTML-текст
+                        html_text = f"🎾 <b>{title}</b>\n\n{body}\n\n{hashtags}"
+                        result["html_text"] = html_text
+                        logger.info("Сконвертирован старый формат в HTML")
+                    else:
+                        return None
 
                 # Проверяем наличие image_query - теперь это обязательное поле
                 if "image_query" not in result or not result.get("image_query"):
