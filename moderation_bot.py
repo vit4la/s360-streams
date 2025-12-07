@@ -1788,13 +1788,19 @@ Style & rules:
 
 Output format:
 
- • Give ONLY the final image description in English, ready to send to an image model (no explanations, no extra text)."""
+ • Give ONLY the final image description in English, ready to send to an image model (no explanations, no extra text).
+
+News text (in Russian):
+
+{ВСТАВЬ СЮДА НОВОСТЬ}"""
+            
+            # Подставляем текст новости в промпт
+            user_prompt = system_prompt.replace("{ВСТАВЬ СЮДА НОВОСТЬ}", news_text)
             
             gpt_response = client.chat.completions.create(
                 model="gpt-4o-mini",  # Используем более дешевую модель для создания промпта
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": news_text}
+                    {"role": "user", "content": user_prompt}
                 ],
                 max_tokens=500,
                 temperature=0.7
