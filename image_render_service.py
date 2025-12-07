@@ -35,8 +35,12 @@ SERVICE_BASE_URL = os.getenv("IMAGE_RENDER_SERVICE_URL", "http://localhost:8000"
 FINAL_WIDTH = 1320
 FINAL_HEIGHT = 1320
 
-# Цвет для надписи "setka360" (салатовый)
+# Цвет бренда (лаймовый/салатовый) - как на скриншоте
 BRAND_COLOR = "#7FFF00"  # Chartreuse (салатовый/лаймовый)
+# Толщина рамки в пикселях
+BORDER_WIDTH = 8
+# Путь к логотипу
+LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
 
 
 def download_image(url: str) -> Optional[Image.Image]:
@@ -115,8 +119,21 @@ def apply_brand_template(img: Image.Image) -> Image.Image:
     Returns:
         Изображение с наложенным шаблоном
     """
-    # Создаём копию для редактирования
-    result = img.copy()
+    # Создаём новое изображение с рамкой
+    # Внутренний размер (без рамки)
+    inner_width = FINAL_WIDTH - (BORDER_WIDTH * 2)
+    inner_height = FINAL_HEIGHT - (BORDER_WIDTH * 2)
+    
+    # Изменяем размер изображения до внутреннего размера
+    img_resized = img.resize((inner_width, inner_height), Image.Resampling.LANCZOS)
+    
+    # Создаём новое изображение с рамкой
+    result = Image.new("RGB", (FINAL_WIDTH, FINAL_HEIGHT), BRAND_COLOR)
+    
+    # Вставляем изображение в центр (с рамкой вокруг)
+    paste_x = BORDER_WIDTH
+    paste_y = BORDER_WIDTH
+    result.paste(img_resized, (paste_x, paste_y))
 
     # Создаём полупрозрачный градиент (сверху вниз, от прозрачного к чёрному)
     overlay = Image.new("RGBA", (FINAL_WIDTH, FINAL_HEIGHT), (0, 0, 0, 0))
@@ -136,50 +153,76 @@ def apply_brand_template(img: Image.Image) -> Image.Image:
         overlay
     ).convert("RGB")
 
-    # Добавляем надпись "setka360" внизу справа
+    # Добавляем логотип внизу по центру
     draw = ImageDraw.Draw(result)
-
-    # Пытаемся использовать системный шрифт, если не получается - используем default
-    try:
-        # Пробуем найти подходящий шрифт
-        font_size = 60
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
+    
+    # Пытаемся загрузить логотип
+    logo_img = None
+    if LOGO_PATH.exists():
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+            logo_img = Image.open(LOGO_PATH)
+            # Конвертируем в RGBA если нужно
+            if logo_img.mode != "RGBA":
+                logo_img = logo_img.convert("RGBA")
+            logger.info("Логотип загружен: %sx%s", logo_img.width, logo_img.height)
+        except Exception as e:
+            logger.warning("Не удалось загрузить логотип: %s", e)
+    
+    if logo_img:
+        # Масштабируем логотип (максимальная высота 120px, сохраняем пропорции)
+        max_logo_height = 120
+        logo_ratio = logo_img.width / logo_img.height
+        if logo_img.height > max_logo_height:
+            logo_height = max_logo_height
+            logo_width = int(logo_height * logo_ratio)
+            logo_img = logo_img.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
+        
+        # Позиция: внизу по центру
+        logo_x = (FINAL_WIDTH - logo_img.width) // 2
+        logo_y = FINAL_HEIGHT - logo_img.height - 40
+        
+        # Вставляем логотип
+        result.paste(logo_img, (logo_x, logo_y), logo_img if logo_img.mode == "RGBA" else None)
+        logger.info("Логотип размещен: x=%s, y=%s", logo_x, logo_y)
+    else:
+        # Fallback: текст "SETKA360" если логотип не найден
+        try:
+            font_size = 60
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except:
-            # Используем стандартный шрифт
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+            except:
+                font = ImageFont.load_default()
 
-    text = "setka360"
-    # Получаем размеры текста
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
+        text = "SETKA360"
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
 
-    # Позиция: внизу справа с отступами
-    x = FINAL_WIDTH - text_width - 40
-    y = FINAL_HEIGHT - text_height - 40
+        # Позиция: внизу по центру
+        x = (FINAL_WIDTH - text_width) // 2
+        y = FINAL_HEIGHT - text_height - 40
 
-    # Рисуем текст с обводкой для читаемости
-    # Сначала обводка (чёрная, немного больше)
-    for adj in range(-2, 3):
-        for adj2 in range(-2, 3):
-            if adj != 0 or adj2 != 0:
-                draw.text(
-                    (x + adj, y + adj2),
-                    text,
-                    font=font,
-                    fill=(0, 0, 0, 200)  # Полупрозрачная чёрная обводка
-                )
+        # Рисуем текст с обводкой для читаемости
+        for adj in range(-2, 3):
+            for adj2 in range(-2, 3):
+                if adj != 0 or adj2 != 0:
+                    draw.text(
+                        (x + adj, y + adj2),
+                        text,
+                        font=font,
+                        fill=(0, 0, 0, 200)
+                    )
 
-    # Затем сам текст салатовым цветом
-    draw.text(
-        (x, y),
-        text,
-        font=font,
-        fill=BRAND_COLOR
-    )
+        # Сам текст лаймовым цветом
+        draw.text(
+            (x, y),
+            text,
+            font=font,
+            fill=BRAND_COLOR
+        )
+        logger.info("Использован текстовый логотип (файл логотипа не найден)")
 
     return result
 
