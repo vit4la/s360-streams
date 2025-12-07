@@ -93,8 +93,34 @@ class GPTWorker:
 
                 # Проверяем наличие обязательных полей
                 if "title" not in result or "body" not in result or "hashtags" not in result:
-                    logger.error("GPT вернул неполный ответ: %s", result)
+                    logger.error("GPT вернул неполный ответ (нет title/body/hashtags): %s", result)
                     return None
+
+                # Проверяем наличие image_query - теперь это обязательное поле
+                if "image_query" not in result or not result.get("image_query"):
+                    logger.error("GPT вернул ответ БЕЗ image_query (обязательное поле): %s", result)
+                    logger.error("Доступные ключи в ответе GPT: %s", list(result.keys()))
+                    # Не возвращаем None, а пытаемся сгенерировать image_query из title
+                    title = result.get("title", "")
+                    # Простая генерация image_query из заголовка
+                    image_query = "tennis player"  # Дефолтное значение
+                    if title:
+                        # Пытаемся извлечь ключевые слова из заголовка
+                        title_lower = title.lower()
+                        if "матч" in title_lower or "match" in title_lower:
+                            image_query = "tennis match"
+                        elif "игрок" in title_lower or "player" in title_lower:
+                            image_query = "tennis player"
+                        elif "турнир" in title_lower or "tournament" in title_lower:
+                            image_query = "tennis tournament"
+                        else:
+                            image_query = "tennis sport"
+                    logger.warning("Сгенерирован image_query по умолчанию: %s", image_query)
+                else:
+                    image_query = result.get("image_query", "").strip()
+                    if not image_query:
+                        logger.warning("GPT вернул пустой image_query, используем дефолт")
+                        image_query = "tennis player"
 
                 # Преобразуем хэштеги в строку, если они в виде списка
                 hashtags = result["hashtags"]
@@ -102,9 +128,6 @@ class GPTWorker:
                     hashtags_str = " ".join(hashtags)
                 else:
                     hashtags_str = str(hashtags)
-
-                # Получаем image_query (может отсутствовать в старых ответах GPT)
-                image_query = result.get("image_query", "")
 
                 return {
                     "title": result["title"],
