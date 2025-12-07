@@ -1672,11 +1672,17 @@ class ModerationBot:
                                 errors.append(f"Канал {channel_id}: не удалось отправить фото ({str(download_error)})")
                 else:
                     # Отправляем текстовое сообщение
+                    logger.info("Отправка текстового сообщения в канал %s, post_text (first 300): %s", channel_id, post_text[:300] if post_text else "EMPTY")
+                    if not post_text or not post_text.strip():
+                        logger.error("ОШИБКА: post_text пустой для канала %s! Пропускаю публикацию.", channel_id)
+                        errors.append(f"Канал {channel_id}: post_text пустой")
+                        continue
                     message = await self.app.bot.send_message(
                         chat_id=channel_id,
                         text=post_text,
                         parse_mode=parse_mode,
                     )
+                    logger.info("Текстовое сообщение отправлено успешно в канал %s", channel_id)
 
                 # Сохраняем информацию о публикации (только для первого успешного канала)
                 # Если нужно сохранять для всех каналов, можно изменить логику
