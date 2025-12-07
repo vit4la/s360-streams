@@ -1773,6 +1773,8 @@ Style & rules:
 
  • Main character = теннисист(ка) из новости, узнаваем по общему образу (пол, прическа/её отсутствие, цвет формы, флаг страны), но без фотореализма и без точного копирования лица.
 
+ • STRICTLY: The main character(s) from the news (1 or 2 main characters) MUST be designed to look like characters from The Simpsons TV series. They should have the classic Simpsons appearance: yellow skin, big round eyes, thick black outlines, simple but expressive faces, and characteristic Simpsons-style hair and features. The character(s) should be recognizable as Simpsons-style characters while still being identifiable as the tennis player(s) from the news through their general appearance (gender, hairstyle or lack thereof, outfit color, country flag).
+
  • Сцена всегда связана с теннисом и новостью:
 
  • матч, тренировка, корты, трибуны, раздевалка, барбершоп, аэропорт, автодром и т.п.
