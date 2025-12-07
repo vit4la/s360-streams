@@ -292,8 +292,9 @@ class ModerationBot:
                     logger.info("Черновик draft_id=%s уже отправлен ВСЕМ модераторам, пропускаю", draft_id)
                     continue
             
-            # Пропускаем старые черновики (созданные более 24 часов назад)
-            # Это предотвращает отправку всех старых черновиков при перезапуске
+            # ВРЕМЕННО: не пропускаем старые черновики для тестирования
+            # Пропускаем старые черновики (созданные более 7 дней назад)
+            # Это предотвращает отправку очень старых черновиков при перезапуске
             import datetime
             created_at_str = draft.get("created_at")
             if created_at_str:
@@ -303,8 +304,9 @@ class ModerationBot:
                     now = datetime.datetime.now()
                     age_hours = (now - created_at).total_seconds() / 3600
                     logger.info("Черновик draft_id=%s, возраст: %.1f часов", draft_id, age_hours)
-                    if age_hours > 24:
-                        logger.info("Пропускаем старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
+                    # Увеличили лимит до 7 дней (168 часов) для тестирования
+                    if age_hours > 168:
+                        logger.info("Пропускаем очень старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
                         continue
                 except Exception as e:
                     logger.warning("Ошибка при парсинге даты создания черновика: %s", e)
