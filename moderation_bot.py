@@ -1736,9 +1736,41 @@ class ModerationBot:
         # Ограничиваем длину до 1000 символов (лимит DALL-E промпта)
         news_text = original_text.strip()[:1000]
         
-        # DALL-E лучше работает с английским языком, но сохраняем смысл промпта
-        # Переводим промпт на английский, но оставляем оригинальный текст новости
-        prompt = f"Generate a humorous cartoon image in The Simpsons style for a Telegram channel post about this news: {news_text}. The image should be funny, colorful, and suitable for a sports news channel. Style: The Simpsons animation, 1024x1024 pixels, landscape orientation."
+        # Переводим текст новости на английский через GPT для лучшей совместимости с DALL-E
+        # DALL-E лучше работает с английским языком
+        try:
+            import httpx
+            proxy_url = None
+            if config.OPENAI_PROXY:
+                proxy_url = config.OPENAI_PROXY
+                if proxy_url.startswith("http://"):
+                    proxy_url = proxy_url.replace("http://", "socks5://", 1)
+            
+            # Используем GPT для перевода текста на английский
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=config.OPENAI_API_KEY,
+                http_client=httpx.Client(proxy=proxy_url, timeout=30.0) if proxy_url else None
+            )
+            
+            translation_response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Используем более дешевую модель для перевода
+                messages=[
+                    {"role": "system", "content": "You are a translator. Translate the following Russian news text to English. Return only the translation, no explanations."},
+                    {"role": "user", "content": news_text}
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+            news_text_en = translation_response.choices[0].message.content.strip()
+            logger.info("Текст новости переведен на английский: %s", news_text_en[:200])
+        except Exception as e:
+            logger.warning("Не удалось перевести текст на английский: %s, используем оригинальный", e)
+            # Если перевод не удался, используем оригинальный текст (может не сработать с DALL-E)
+            news_text_en = news_text
+        
+        # Формируем промпт на английском
+        prompt = f"Generate a humorous cartoon image in The Simpsons style for a Telegram channel post about this news: {news_text_en}. The image should be funny, colorful, and suitable for a sports news channel. Style: The Simpsons animation, 1024x1024 pixels, landscape orientation."
         
         url = "https://api.openai.com/v1/images/generations"
         headers = {
