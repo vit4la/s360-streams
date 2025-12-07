@@ -5,6 +5,7 @@
 
 import asyncio
 import logging
+import os
 import re
 from typing import Dict, Optional, Set, List
 from datetime import datetime
@@ -197,6 +198,9 @@ class ModerationBot:
                 InlineKeyboardButton("✅ Опубликовать", callback_data=f"approve:{draft_id}"),
                 InlineKeyboardButton("✏️ Править", callback_data=f"edit:{draft_id}"),
                 InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
+            ],
+            [
+                InlineKeyboardButton("🎨 В стиле Симпсонов", callback_data=f"generate_simpsons:{draft_id}"),
             ]
         ]
         
@@ -430,6 +434,13 @@ class ModerationBot:
                 image_index = int(parts[2])
                 logger.info("Обработка select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
                 await self._handle_select_image_for_publish(query, draft_id, image_index)
+        elif action == "generate_simpsons":
+            draft_id = int(parts[1])
+            draft = self.db.get_draft_post(draft_id)
+            if not draft:
+                await query.edit_message_text("❌ Черновик не найден.")
+                return
+            await self._handle_generate_simpsons(query, draft_id, draft)
         elif action == "sel_img_pub":
             # Старый формат для обратной совместимости
             draft_id = int(parts[1])
@@ -807,6 +818,94 @@ class ModerationBot:
         self.db.mark_draft_rejected(draft_id)
         await query.edit_message_text("🚫 Черновик отклонён.")
 
+    async def _handle_generate_simpsons(self, query, draft_id: int, draft: Dict) -> None:
+        """Обработать нажатие 'В стиле Симпсонов' - сгенерировать изображение через DALL-E."""
+        try:
+            # Показываем сообщение о генерации
+            try:
+                if query.message.photo:
+                    await query.edit_message_caption(caption="🎨 Генерирую изображение в стиле Симпсонов... Это может занять до минуты.")
+                else:
+                    await query.edit_message_text("🎨 Генерирую изображение в стиле Симпсонов... Это может занять до минуты.")
+            except:
+                await query.answer("🎨 Генерирую изображение...")
+            
+            # Получаем текст поста
+            post_text = draft.get("body", "") or draft.get("title", "")
+            if not post_text:
+                await query.edit_message_text("❌ Не удалось получить текст поста для генерации.")
+                return
+            
+            # Генерируем изображение (синхронная функция в отдельном потоке)
+            loop = asyncio.get_event_loop()
+            image_url = await loop.run_in_executor(
+                None, 
+                self._generate_simpsons_image, 
+                post_text
+            )
+            
+            if not image_url:
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption="❌ Не удалось сгенерировать изображение. Попробуйте позже.")
+                    else:
+                        await query.edit_message_text("❌ Не удалось сгенерировать изображение. Попробуйте позже.")
+                except:
+                    await self.app.bot.send_message(chat_id=query.from_user.id, text="❌ Не удалось сгенерировать изображение.")
+                return
+            
+            # Сохраняем final_image_url в БД
+            self.db.update_draft_post(draft_id, final_image_url=image_url)
+            
+            # Показываем сгенерированное изображение
+            updated_draft = self.db.get_draft_post(draft_id)
+            message_text = self._format_draft_message(updated_draft)
+            
+            # Определяем parse_mode
+            body = updated_draft.get("body", "")
+            has_html_tags = (
+                "<b>" in body or "</b>" in body or
+                "<i>" in body or "</i>" in body or
+                "<u>" in body or "</u>" in body
+            )
+            parse_mode = "HTML" if has_html_tags else None
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Опубликовать", callback_data=f"approve:{draft_id}"),
+                    InlineKeyboardButton("✏️ Править", callback_data=f"edit:{draft_id}"),
+                    InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
+                ]
+            ]
+            
+            # Отправляем изображение с текстом
+            try:
+                await self.app.bot.send_photo(
+                    chat_id=query.from_user.id,
+                    photo=image_url,
+                    caption=message_text,
+                    parse_mode=parse_mode,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                # Удаляем старое сообщение
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+            except Exception as e:
+                logger.error("Ошибка при отправке сгенерированного изображения: %s", e, exc_info=True)
+                await query.edit_message_text(f"✅ Изображение сгенерировано, но произошла ошибка при отправке: {str(e)}")
+                
+        except Exception as e:
+            logger.error("Ошибка при генерации изображения в стиле Симпсонов: %s", e, exc_info=True)
+            try:
+                if query.message.photo:
+                    await query.edit_message_caption(caption=f"❌ Ошибка: {str(e)}")
+                else:
+                    await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+            except:
+                await self.app.bot.send_message(chat_id=query.from_user.id, text=f"❌ Ошибка: {str(e)}")
+
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик текстовых сообщений и фото."""
         if not update.message:
@@ -1026,6 +1125,9 @@ class ModerationBot:
                 InlineKeyboardButton("✅ Опубликовать", callback_data=f"approve:{draft_id}"),
                 InlineKeyboardButton("✏️ Править", callback_data=f"edit:{draft_id}"),
                 InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
+            ],
+            [
+                InlineKeyboardButton("🎨 В стиле Симпсонов", callback_data=f"generate_simpsons:{draft_id}"),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1160,6 +1262,9 @@ class ModerationBot:
                 InlineKeyboardButton("✅ Опубликовать", callback_data=f"approve:{draft_id}"),
                 InlineKeyboardButton("✏️ Править", callback_data=f"edit:{draft_id}"),
                 InlineKeyboardButton("🚫 Отклонить", callback_data=f"reject:{draft_id}"),
+            ],
+            [
+                InlineKeyboardButton("🎨 В стиле Симпсонов", callback_data=f"generate_simpsons:{draft_id}"),
             ]
         ]
         if updated_draft.get("image_query"):
@@ -1483,6 +1588,105 @@ class ModerationBot:
 
         except Exception as e:
             logger.error("Ошибка при запросе к Pexels API: %s", e)
+            return None
+
+    def _generate_simpsons_image(self, post_text: str) -> Optional[str]:
+        """Генерировать изображение в стиле Симпсонов через DALL-E API (синхронная функция).
+
+        Args:
+            post_text: Текст поста для генерации изображения
+
+        Returns:
+            URL сгенерированного изображения или None при ошибке
+        """
+        import httpx
+        from pathlib import Path
+        import uuid
+        from io import BytesIO
+        
+        # Формируем промпт для DALL-E
+        # Извлекаем заголовок из HTML (если есть) или используем первые 100 символов
+        import re
+        title_match = re.search(r'<b>(.*?)</b>', post_text, re.DOTALL)
+        if title_match:
+            title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()[:100]
+        else:
+            # Убираем HTML-теги и берем первые 100 символов
+            title = re.sub(r'<[^>]+>', '', post_text).strip()[:100]
+        
+        prompt = f"Generate an image in The Simpsons cartoon style for a Telegram channel post about tennis: {title}. The image should be colorful, fun, and suitable for a sports news channel. Style: The Simpsons animation, landscape orientation, 1024x1024 pixels."
+        
+        url = "https://api.openai.com/v1/images/generations"
+        headers = {
+            "Authorization": f"Bearer {config.OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "size": "1024x1024",
+            "quality": "standard",
+            "n": 1
+        }
+        
+        try:
+            logger.info("Запрос к DALL-E API для генерации изображения в стиле Симпсонов")
+            logger.info("Промпт: %s", prompt[:200])
+            
+            # Используем httpx с прокси
+            proxy_url = None
+            if config.OPENAI_PROXY:
+                proxy_url = config.OPENAI_PROXY
+                if proxy_url.startswith("http://"):
+                    proxy_url = proxy_url.replace("http://", "socks5://", 1)
+            
+            with httpx.Client(proxy=proxy_url, timeout=60.0) as client:
+                resp = client.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+            
+            image_url = data.get("data", [{}])[0].get("url")
+            if not image_url:
+                logger.error("DALL-E API не вернул URL изображения: %s", data)
+                return None
+            
+            logger.info("Изображение сгенерировано: %s", image_url)
+            
+            # Скачиваем изображение и сохраняем локально
+            # Затем отправляем в сервис стилизации
+            with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                img_resp = client.get(image_url)
+                img_resp.raise_for_status()
+                img_data = img_resp.content
+            
+            # Сохраняем во временную папку
+            temp_dir = Path(__file__).parent / "temp_simpsons"
+            temp_dir.mkdir(exist_ok=True)
+            temp_filename = f"simpsons_{uuid.uuid4().hex}.png"
+            temp_filepath = temp_dir / temp_filename
+            
+            with open(temp_filepath, "wb") as f:
+                f.write(img_data)
+            
+            # Получаем URL для временного файла (для передачи в сервис стилизации)
+            base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/")
+            temp_image_url = f"{base_url}/rendered/{temp_filename}"
+            
+            # Вызываем сервис стилизации для добавления рамки и логотипа
+            # Извлекаем title для стилизации
+            title_for_render = title[:50] if title else "Tennis News"
+            final_url = self._render_image(temp_image_url, title_for_render)
+            
+            # Удаляем временный файл
+            try:
+                os.remove(temp_filepath)
+            except:
+                pass
+            
+            return final_url if final_url else temp_image_url
+            
+        except Exception as e:
+            logger.error("Ошибка при генерации изображения через DALL-E: %s", e, exc_info=True)
             return None
 
     def _render_image(self, image_url: str, title: str) -> Optional[str]:
