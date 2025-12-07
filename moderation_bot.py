@@ -1679,38 +1679,18 @@ class ModerationBot:
             
             logger.info("Изображение сгенерировано: %s", image_url)
             
-            # Скачиваем изображение и сохраняем локально
-            # Затем отправляем в сервис стилизации
-            with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
-                img_resp = client.get(image_url)
-                img_resp.raise_for_status()
-                img_data = img_resp.content
-            
-            # Сохраняем во временную папку
-            temp_dir = Path(__file__).parent / "temp_simpsons"
-            temp_dir.mkdir(exist_ok=True)
-            temp_filename = f"simpsons_{uuid.uuid4().hex}.png"
-            temp_filepath = temp_dir / temp_filename
-            
-            with open(temp_filepath, "wb") as f:
-                f.write(img_data)
-            
-            # Получаем URL для временного файла (для передачи в сервис стилизации)
-            base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/")
-            temp_image_url = f"{base_url}/rendered/{temp_filename}"
-            
-            # Вызываем сервис стилизации для добавления рамки и логотипа
+            # Передаём URL DALL-E напрямую в сервис стилизации
+            # Сервис сам скачает изображение и обработает его
             # Извлекаем title для стилизации
             title_for_render = title[:50] if title else "Tennis News"
-            final_url = self._render_image(temp_image_url, title_for_render)
+            final_url = self._render_image(image_url, title_for_render)
             
-            # Удаляем временный файл
-            try:
-                os.remove(temp_filepath)
-            except:
-                pass
+            # Если стилизация не удалась, используем оригинальное изображение DALL-E
+            if not final_url:
+                logger.warning("Стилизация не удалась, используем оригинальное изображение DALL-E")
+                final_url = image_url
             
-            return final_url if final_url else temp_image_url
+            return final_url
             
         except Exception as e:
             logger.error("Ошибка при генерации изображения через DALL-E: %s", e, exc_info=True)
