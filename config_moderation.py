@@ -65,6 +65,7 @@ TELEGRAM_SESSION_FILE = "telethon_session.session"
 SOURCE_CHANNEL_IDS = [
     "@elitetennis",  # Канал 1
     "@primetennis",  # Канал 2
+    "@tennistv",  # Канал 3
 ]
 
 # ==========================
