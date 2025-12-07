@@ -1731,13 +1731,12 @@ class ModerationBot:
         import uuid
         from io import BytesIO
         
-        # Формируем промпт для DALL-E согласно требованиям
+        # Формируем промпт для DALL-E согласно новым требованиям
         # Используем оригинальный текст новости полностью
-        # Ограничиваем длину до 1000 символов (лимит DALL-E промпта)
+        # Ограничиваем длину до 1000 символов
         news_text = original_text.strip()[:1000]
         
-        # Переводим текст новости на английский через GPT для лучшей совместимости с DALL-E
-        # DALL-E лучше работает с английским языком
+        # Используем GPT для создания детального промпта для DALL-E в стиле Симпсонов
         try:
             import httpx
             proxy_url = None
@@ -1746,31 +1745,66 @@ class ModerationBot:
                 if proxy_url.startswith("http://"):
                     proxy_url = proxy_url.replace("http://", "socks5://", 1)
             
-            # Используем GPT для перевода текста на английский
+            # Используем GPT для создания промпта для DALL-E
             from openai import OpenAI
             client = OpenAI(
                 api_key=config.OPENAI_API_KEY,
                 http_client=httpx.Client(proxy=proxy_url, timeout=30.0) if proxy_url else None
             )
             
-            translation_response = client.chat.completions.create(
-                model="gpt-4o-mini",  # Используем более дешевую модель для перевода
+            system_prompt = """You are generating a single funny 2D illustration in the style of "The Simpsons" for a tennis media project called Setka360.
+
+I will give you a short tennis news text in Russian.
+
+Task:
+
+ 1. Read the news and extract the main idea (who, где, что произошло, какой главный прикол/изюминка).
+
+ 2. Based only on this essence, create ONE humorous scene as a detailed image prompt.
+
+Style & rules:
+
+ • Classic The Simpsons look: yellow skin, big round eyes, thick black outlines, simple but expressive faces.
+
+ • Main character = теннисист(ка) из новости, узнаваем по общему образу (пол, прическа/её отсутствие, цвет формы, флаг страны), но без фотореализма и без точного копирования лица.
+
+ • Сцена всегда связана с теннисом и новостью:
+
+ • матч, тренировка, корты, трибуны, раздевалка, барбершоп, аэропорт, автодром и т.п.
+
+ • один яркий визуальный гэг, отражающий суть новости (например, смена имиджа, скорость как в F1, возвращение на корт после паузы и т.д.).
+
+ • На заднем плане по возможности добавить:
+
+ • надпись с городом/турниром из новости (например, "ABU DHABI", "BASEL", "ATLANTA" на табло или баннере);
+
+ • мелкие детали, подчёркивающие страну игрока (флаг на форме, маленький флажок на табло и др.).
+
+ • Обязательно где-то на корте или баннере маленькая, но читаемая подпись: "Setka360".
+
+ • Цвета яркие, контрастные; настроение весёлое и динамичное; формат изображения квадратный (1:1).
+
+ • Никаких реальных логотипов брендов и спонсоров (только вымышленные или текстовые).
+
+Output format:
+
+ • Give ONLY the final image description in English, ready to send to an image model (no explanations, no extra text)."""
+            
+            gpt_response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Используем более дешевую модель для создания промпта
                 messages=[
-                    {"role": "system", "content": "You are a translator. Translate the following Russian news text to English. Return only the translation, no explanations."},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": news_text}
                 ],
                 max_tokens=500,
-                temperature=0.3
+                temperature=0.7
             )
-            news_text_en = translation_response.choices[0].message.content.strip()
-            logger.info("Текст новости переведен на английский: %s", news_text_en[:200])
+            prompt = gpt_response.choices[0].message.content.strip()
+            logger.info("Промпт для DALL-E создан через GPT: %s", prompt[:300])
         except Exception as e:
-            logger.warning("Не удалось перевести текст на английский: %s, используем оригинальный", e)
-            # Если перевод не удался, используем оригинальный текст (может не сработать с DALL-E)
-            news_text_en = news_text
-        
-        # Формируем промпт на английском
-        prompt = f"Generate a humorous cartoon image in The Simpsons style for a Telegram channel post about this news: {news_text_en}. The image should be funny, colorful, and suitable for a sports news channel. Style: The Simpsons animation, 1024x1024 pixels, landscape orientation."
+            logger.error("Не удалось создать промпт через GPT: %s, используем упрощенный вариант", e, exc_info=True)
+            # Если создание промпта не удалось, используем упрощенный вариант
+            prompt = f"Generate a humorous cartoon image in The Simpsons style for a Telegram channel post about tennis news: {news_text[:500]}. The image should be funny, colorful, and suitable for a sports news channel. Style: The Simpsons animation, 1024x1024 pixels, square format."
         
         url = "https://api.openai.com/v1/images/generations"
         headers = {
