@@ -710,9 +710,16 @@ class ModerationBot:
         """Перейти в режим ожидания своей картинки."""
         user_id = query.from_user.id
         
+        # Проверяем, есть ли состояние публикации
         if user_id not in self.publishing_states:
-            await query.edit_message_text("❌ Ошибка: состояние потеряно.")
-            return
+            # Если состояния нет, создаем его (используем первый канал по умолчанию)
+            if len(config.TARGET_CHANNEL_IDS) == 1:
+                target_channel = config.TARGET_CHANNEL_IDS[0]
+                self.publishing_states[user_id] = (draft_id, [target_channel])
+                logger.info("Создано состояние публикации для user_id=%s, draft_id=%s", user_id, draft_id)
+            else:
+                await query.edit_message_text("❌ Ошибка: состояние потеряно. Нажмите 'Опубликовать' снова.")
+                return
 
         await query.edit_message_text(
             "📸 Отправьте картинку одним сообщением.",
@@ -720,6 +727,7 @@ class ModerationBot:
                 InlineKeyboardButton("Отмена", callback_data=f"publish_no_photo:{draft_id}")
             ]]),
         )
+        logger.info("Ожидание фото от user_id=%s для draft_id=%s", user_id, draft_id)
 
     async def _handle_publish_no_photo(self, query, draft_id: int) -> None:
         """Опубликовать без картинки."""
