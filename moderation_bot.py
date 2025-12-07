@@ -952,9 +952,36 @@ class ModerationBot:
             return
 
         image_query = draft.get("image_query")
-        if not image_query:
-            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
-            return
+        
+        # Если image_query нет, генерируем его из заголовка
+        if not image_query or not str(image_query).strip():
+            logger.info("_handle_show_images_for_publish: image_query отсутствует, генерирую из заголовка")
+            title = draft.get("title", "")
+            # Простая генерация image_query из заголовка
+            title_lower = title.lower()
+            if "матч" in title_lower or "match" in title_lower:
+                image_query = "tennis match"
+            elif "игрок" in title_lower or "player" in title_lower or "теннисист" in title_lower:
+                image_query = "tennis player"
+            elif "турнир" in title_lower or "tournament" in title_lower:
+                image_query = "tennis tournament"
+            elif "чемпионат" in title_lower or "championship" in title_lower:
+                image_query = "tennis championship"
+            elif "wta" in title_lower:
+                image_query = "tennis WTA match"
+            elif "atp" in title_lower:
+                image_query = "tennis ATP match"
+            else:
+                image_query = "tennis sport"
+            
+            logger.info("_handle_show_images_for_publish: сгенерирован image_query: %s", image_query)
+            
+            # Сохраняем сгенерированный image_query в БД
+            try:
+                self.db.update_draft_post(draft_id, image_query=image_query)
+                logger.info("_handle_show_images_for_publish: image_query сохранен в БД")
+            except Exception as e:
+                logger.error("_handle_show_images_for_publish: ошибка при сохранении image_query: %s", e)
 
         await query.edit_message_text("🔄 Ищу картинки...")
 
