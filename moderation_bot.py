@@ -1384,6 +1384,7 @@ class ModerationBot:
                                 chat_id=channel_id,
                                 photo=image_data,
                                 caption=post_text,
+                                parse_mode=parse_mode,
                             )
                             logger.info("Картинка отправлена успешно в канал %s", channel_id)
                         except Exception as download_error:
@@ -1392,6 +1393,7 @@ class ModerationBot:
                             message = await self.app.bot.send_message(
                                 chat_id=channel_id,
                                 text=post_text,
+                                parse_mode=parse_mode,
                             )
                             errors.append(f"Канал {channel_id}: не удалось отправить фото ({str(download_error)})")
                     else:
@@ -1400,6 +1402,7 @@ class ModerationBot:
                             chat_id=channel_id,
                             photo=image_to_use,
                             caption=post_text,
+                            parse_mode=parse_mode,
                         )
                 else:
                     # Отправляем текстовое сообщение
