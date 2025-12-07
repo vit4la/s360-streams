@@ -779,20 +779,31 @@ class ModerationBot:
         # Проверяем, находится ли пользователь в режиме публикации (ожидание фото)
         if user_id in self.publishing_states:
             draft_id, selected_channels = self.publishing_states[user_id]
+            logger.info("Получено сообщение от user_id=%s в режиме публикации, draft_id=%s, есть фото: %s", 
+                       user_id, draft_id, bool(update.message.photo))
             
             # Проверяем, есть ли фото
             if update.message.photo:
                 photo = update.message.photo[-1]  # Берём самое большое фото
                 photo_file_id = photo.file_id
-                await self._publish_draft(
-                    draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
-                )
+                logger.info("Получено фото от user_id=%s, file_id=%s, публикую draft_id=%s", 
+                           user_id, photo_file_id, draft_id)
                 
-                # Очищаем состояние
-                del self.publishing_states[user_id]
-                
-                await update.message.reply_text("✅ Пост опубликован с картинкой!")
+                try:
+                    await self._publish_draft(
+                        draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
+                    )
+                    
+                    # Очищаем состояние
+                    del self.publishing_states[user_id]
+                    logger.info("Публикация завершена, состояние удалено для user_id=%s", user_id)
+                    
+                    await update.message.reply_text("✅ Пост опубликован с картинкой!")
+                except Exception as e:
+                    logger.error("Ошибка при публикации с фото: %s", e, exc_info=True)
+                    await update.message.reply_text(f"❌ Ошибка при публикации: {str(e)}")
             else:
+                logger.warning("Получено сообщение без фото от user_id=%s в режиме публикации", user_id)
                 await update.message.reply_text(
                     "📸 Отправьте картинку или нажмите 'Без картинки' в предыдущем сообщении."
                 )
