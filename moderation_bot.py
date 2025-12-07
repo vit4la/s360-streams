@@ -816,13 +816,103 @@ class ModerationBot:
             
             # Проверяем, есть ли фото (в любом формате)
             if has_photo and photo_file_id:
-                logger.info("Получено фото от user_id=%s, file_id=%s, публикую draft_id=%s", 
+                logger.info("Получено фото от user_id=%s, file_id=%s, обрабатываю и стилизую draft_id=%s", 
                            user_id, photo_file_id, draft_id)
                 
                 try:
-                    await self._publish_draft(
-                        draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
-                    )
+                    # Получаем черновик для заголовка
+                    draft = self.db.get_draft_post(draft_id)
+                    if not draft:
+                        await update.message.reply_text("❌ Черновик не найден.")
+                        del self.publishing_states[user_id]
+                        return
+                    
+                    title = draft.get("title", "")
+                    if not title:
+                        # Извлекаем заголовок из body (HTML)
+                        body = draft.get("body", "")
+                        import re
+                        title_match = re.search(r'<b>(.*?)</b>', body, re.DOTALL)
+                        if title_match:
+                            title = re.sub(r'^[🎾🏆⭐📊🔥💥⏱🟢❄️]+', '', title_match.group(1)).strip()
+                    
+                    # Скачиваем фото и сохраняем во временную папку
+                    await update.message.reply_text("🎨 Скачиваю и стилизую картинку...")
+                    
+                    # Скачиваем файл
+                    file = await self.app.bot.get_file(photo_file_id)
+                    from io import BytesIO
+                    from pathlib import Path
+                    import uuid
+                    import os
+                    
+                    file_data = BytesIO()
+                    await file.download_to_memory(file_data)
+                    file_data.seek(0)
+                    
+                    # Сохраняем во временную папку
+                    temp_dir = Path(__file__).parent / "temp_uploads"
+                    temp_dir.mkdir(exist_ok=True)
+                    temp_filename = f"temp_{uuid.uuid4().hex}.jpg"
+                    temp_filepath = temp_dir / temp_filename
+                    
+                    with open(temp_filepath, "wb") as f:
+                        f.write(file_data.read())
+                    
+                    # Получаем URL для временного файла
+                    # Используем тот же базовый URL, что и для стилизованных изображений
+                    base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/")
+                    temp_image_url = f"{base_url}/temp/{temp_filename}"
+                    
+                    # Но сначала нужно добавить endpoint в сервис стилизации для отдачи временных файлов
+                    # Пока используем прямой путь к файлу через локальный сервер
+                    # Или лучше - загрузить файл напрямую в сервис стилизации
+                    # Для простоты - используем локальный путь и добавляем endpoint в сервис
+                    
+                    # Временно: используем прямой путь к файлу (если сервис на том же сервере)
+                    # Или загружаем файл в сервис стилизации через multipart/form-data
+                    # Но проще - добавить endpoint /temp/<filename> в сервис стилизации
+                    
+                    # Пока используем обходной путь: сохраняем в rendered_images с префиксом temp_
+                    # и удаляем после стилизации
+                    rendered_dir = Path(__file__).parent / "rendered_images"
+                    rendered_dir.mkdir(exist_ok=True)
+                    temp_rendered_filename = f"temp_{uuid.uuid4().hex}.jpg"
+                    temp_rendered_filepath = rendered_dir / temp_rendered_filename
+                    
+                    # Копируем файл в rendered_images
+                    with open(temp_rendered_filepath, "wb") as f:
+                        file_data.seek(0)
+                        f.write(file_data.read())
+                    
+                    # Получаем URL
+                    temp_image_url = f"{base_url}/rendered/{temp_rendered_filename}"
+                    
+                    # Стилизуем картинку
+                    final_image_url = self._render_image(temp_image_url, title)
+                    
+                    # Удаляем временный файл
+                    try:
+                        temp_rendered_filepath.unlink()
+                        temp_filepath.unlink()
+                    except Exception as cleanup_error:
+                        logger.warning("Не удалось удалить временный файл: %s", cleanup_error)
+                    
+                    if not final_image_url:
+                        await update.message.reply_text("❌ Не удалось стилизовать картинку. Публикую без стилизации.")
+                        # Публикуем с исходным фото
+                        await self._publish_draft(
+                            draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
+                        )
+                    else:
+                        # Сохраняем final_image_url в БД
+                        self.db.update_draft_post(draft_id, final_image_url=final_image_url)
+                        logger.info("Сохранен final_image_url для draft_id=%s: %s", draft_id, final_image_url)
+                        
+                        # Публикуем с стилизованной картинкой
+                        await self._publish_draft(
+                            draft_id, selected_channels, user_id=user_id
+                        )
                     
                     # Очищаем состояние
                     del self.publishing_states[user_id]
@@ -830,8 +920,11 @@ class ModerationBot:
                     
                     await update.message.reply_text("✅ Пост опубликован с картинкой!")
                 except Exception as e:
-                    logger.error("Ошибка при публикации с фото: %s", e, exc_info=True)
-                    await update.message.reply_text(f"❌ Ошибка при публикации: {str(e)}")
+                    logger.error("Ошибка при обработке и публикации фото: %s", e, exc_info=True)
+                    await update.message.reply_text(f"❌ Ошибка при обработке фото: {str(e)}")
+                    # Очищаем состояние даже при ошибке
+                    if user_id in self.publishing_states:
+                        del self.publishing_states[user_id]
             else:
                 logger.warning("Получено сообщение без фото от user_id=%s в режиме публикации, тип: %s", 
                              user_id, type(update.message).__name__)
