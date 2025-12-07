@@ -1512,8 +1512,9 @@ class ModerationBot:
         self.app.add_handler(CommandHandler("start", self.start_command))
         logger.info("Обработчик команд зарегистрирован")
         # MessageHandler должен быть последним, чтобы не перехватывать callback queries
-        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.message_handler))
-        logger.info("Обработчик сообщений зарегистрирован (только TEXT, не COMMAND)")
+        # Обрабатываем и текст, и фото (для загрузки своих картинок)
+        self.app.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, self.message_handler))
+        logger.info("Обработчик сообщений зарегистрирован (TEXT и PHOTO, не COMMAND)")
 
         # Запускаем бота
         logger.info("Инициализация бота...")
