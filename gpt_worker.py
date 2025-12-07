@@ -352,8 +352,20 @@ class GPTWorker:
         # Извлекаем html_text из результата GPT
         html_text = result.get("html_text", "")
         
-        # Для обратной совместимости: если есть старые поля title/body/hashtags, используем их
-        # Но теперь используем html_text как body, а title и hashtags извлекаем из HTML
+        # Если html_text нет, но есть старый формат (title/body/hashtags), конвертируем в HTML
+        if not html_text:
+            logger.warning("GPT вернул старый формат (title/body/hashtags), конвертирую в HTML")
+            title = result.get("title", "")
+            body = result.get("body", "")
+            hashtags = result.get("hashtags", "")
+            if isinstance(hashtags, list):
+                hashtags = " ".join(hashtags)
+            
+            # Формируем HTML-текст с эмодзи и форматированием
+            html_text = f"🎾 <b>{title}</b>\n\n{body}\n\n{hashtags}"
+            logger.info("Сконвертирован старый формат в HTML: %s", html_text[:200])
+        
+        # Извлекаем title и hashtags из HTML для БД
         title = ""
         hashtags = ""
         
