@@ -765,10 +765,31 @@ class ModerationBot:
 
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик текстовых сообщений и фото."""
+        if not update.message:
+            return
+            
         user_id = update.effective_user.id
         
-        logger.info("message_handler вызван: user_id=%s, есть фото=%s, есть текст=%s", 
-                   user_id, bool(update.message.photo), bool(update.message.text))
+        # Проверяем все возможные способы получения фото
+        has_photo = bool(update.message.photo)
+        has_document = bool(update.message.document)
+        photo_file_id = None
+        
+        # Если фото есть в стандартном формате
+        if update.message.photo:
+            photo = update.message.photo[-1]  # Берём самое большое фото
+            photo_file_id = photo.file_id
+        # Если фото отправлено как документ (например, PNG/JPG файл)
+        elif update.message.document:
+            doc = update.message.document
+            # Проверяем, что это изображение
+            if doc.mime_type and doc.mime_type.startswith('image/'):
+                photo_file_id = doc.file_id
+                has_photo = True
+                logger.info("Фото получено как документ: mime_type=%s, file_id=%s", doc.mime_type, photo_file_id)
+        
+        logger.info("message_handler вызван: user_id=%s, есть фото=%s (photo=%s, document=%s), есть текст=%s", 
+                   user_id, has_photo, bool(update.message.photo), bool(update.message.document), bool(update.message.text))
 
         if not self._is_moderator(user_id):
             logger.debug("Пользователь %s не является модератором", user_id)
@@ -778,7 +799,11 @@ class ModerationBot:
         if user_id in self.editing_states:
             draft_id = self.editing_states[user_id]
             logger.info("Пользователь %s в режиме редактирования, draft_id=%s", user_id, draft_id)
-            await self._handle_edit_text(update, draft_id)
+            # Редактирование работает только с текстом
+            if update.message.text:
+                await self._handle_edit_text(update, draft_id)
+            else:
+                await update.message.reply_text("✏️ Отправьте текст для редактирования.")
             return
 
         # Проверяем, находится ли пользователь в режиме публикации (ожидание фото)
@@ -787,12 +812,10 @@ class ModerationBot:
         if user_id in self.publishing_states:
             draft_id, selected_channels = self.publishing_states[user_id]
             logger.info("Получено сообщение от user_id=%s в режиме публикации, draft_id=%s, есть фото: %s", 
-                       user_id, draft_id, bool(update.message.photo))
+                       user_id, draft_id, has_photo)
             
-            # Проверяем, есть ли фото
-            if update.message.photo:
-                photo = update.message.photo[-1]  # Берём самое большое фото
-                photo_file_id = photo.file_id
+            # Проверяем, есть ли фото (в любом формате)
+            if has_photo and photo_file_id:
                 logger.info("Получено фото от user_id=%s, file_id=%s, публикую draft_id=%s", 
                            user_id, photo_file_id, draft_id)
                 
