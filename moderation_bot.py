@@ -266,24 +266,30 @@ class ModerationBot:
 
     async def _check_and_send_new_drafts(self) -> None:
         """Проверить новые черновики и отправить их модераторам."""
-        pending_drafts = self.db.get_pending_draft_posts()
+        all_pending = self.db.get_pending_draft_posts()
+        logger.info("_check_and_send_new_drafts: найдено всего черновиков pending_moderation: %s", len(all_pending))
         
         # Ограничиваем отправку до 1 поста за раз для тестирования
         # Чтобы не было путаницы с несколькими постами одновременно
         MAX_DRAFTS_PER_CHECK = 1
-        pending_drafts = pending_drafts[:MAX_DRAFTS_PER_CHECK]
+        pending_drafts = all_pending[:MAX_DRAFTS_PER_CHECK]
         
         if pending_drafts:
             logger.info("Найдено %s новых черновиков, отправляю первый (лимит: %s)", 
-                       len(self.db.get_pending_draft_posts()), MAX_DRAFTS_PER_CHECK)
+                       len(all_pending), MAX_DRAFTS_PER_CHECK)
+        else:
+            logger.info("Нет черновиков для отправки (всего pending: %s)", len(all_pending))
 
         for draft in pending_drafts:
             draft_id = draft["id"]
+            logger.info("Обрабатываю черновик draft_id=%s", draft_id)
             
             # Если черновик уже отправлен всем модераторам, пропускаем
             if draft_id in self.sent_drafts:
                 sent_to = self.sent_drafts[draft_id]
+                logger.info("Черновик draft_id=%s уже отправлен модераторам: %s", draft_id, sent_to)
                 if sent_to == set(config.MODERATOR_IDS):
+                    logger.info("Черновик draft_id=%s уже отправлен ВСЕМ модераторам, пропускаю", draft_id)
                     continue
             
             # Пропускаем старые черновики (созданные более 24 часов назад)
@@ -296,13 +302,15 @@ class ModerationBot:
                     created_at = datetime.datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
                     now = datetime.datetime.now()
                     age_hours = (now - created_at).total_seconds() / 3600
+                    logger.info("Черновик draft_id=%s, возраст: %.1f часов", draft_id, age_hours)
                     if age_hours > 24:
-                        logger.debug("Пропускаем старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
+                        logger.info("Пропускаем старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
                         continue
                 except Exception as e:
                     logger.warning("Ошибка при парсинге даты создания черновика: %s", e)
 
             # Отправляем черновик
+            logger.info("Отправляю черновик draft_id=%s модераторам", draft_id)
             await self._send_draft_to_moderators(draft)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
