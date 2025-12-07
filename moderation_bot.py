@@ -480,20 +480,37 @@ class ModerationBot:
 
         # Проверяем есть ли исходная картинка
         draft = self.db.get_draft_post(draft_id)
-        source_photo_file_id = draft.get("photo_file_id") if draft else None
+        if not draft:
+            await query.edit_message_text("❌ Черновик не найден.")
+            return
+            
+        source_photo_file_id = draft.get("photo_file_id")
         
         keyboard = []
+        
+        # Кнопка "Выбрать картинку" - ВСЕГДА показываем
+        keyboard.append([
+            InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
+        ])
+        
+        # Кнопка "Без картинки"
+        keyboard.append([
+            InlineKeyboardButton("🚫 Без картинки", callback_data=f"publish_no_photo:{draft_id}")
+        ])
+        
+        # Кнопка "Вставить свою" - всегда доступна
+        keyboard.append([
+            InlineKeyboardButton("📤 Вставить свою", callback_data=f"publish_custom_photo:{draft_id}")
+        ])
+        
+        # Кнопка "Использовать фото из поста" - только если есть
         if source_photo_file_id:
             keyboard.append([
-                InlineKeyboardButton("🖼️ С исходной картинкой", callback_data=f"publish_source_photo:{draft_id}")
+                InlineKeyboardButton("📷 Использовать фото из поста", callback_data=f"publish_source_photo:{draft_id}")
             ])
-        keyboard.append([
-            InlineKeyboardButton("📸 Прикрепить свою", callback_data=f"publish_custom_photo:{draft_id}"),
-            InlineKeyboardButton("Без картинки", callback_data=f"publish_no_photo:{draft_id}")
-        ])
 
         await query.edit_message_text(
-            "📸 Выберите вариант публикации:",
+            "Выберите вариант публикации:",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
