@@ -879,14 +879,35 @@ class ModerationBot:
             ]
             
             # Отправляем изображение с текстом
+            # Скачиваем изображение и отправляем как файл (как в _publish_draft)
             try:
+                import httpx
+                from io import BytesIO
+                
+                # Скачиваем изображение по URL
+                logger.info("Скачивание сгенерированного изображения: %s", image_url)
+                proxy_url = None
+                if config.OPENAI_PROXY:
+                    proxy_url = config.OPENAI_PROXY
+                    if proxy_url.startswith("http://"):
+                        proxy_url = proxy_url.replace("http://", "socks5://", 1)
+                
+                with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                    resp = client.get(image_url)
+                    resp.raise_for_status()
+                    image_data = BytesIO(resp.content)
+                    image_data.name = "image.jpg"  # Нужно для Telegram API
+                
+                # Отправляем как файл
                 await self.app.bot.send_photo(
                     chat_id=query.from_user.id,
-                    photo=image_url,
+                    photo=image_data,
                     caption=message_text,
                     parse_mode=parse_mode,
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
+                logger.info("Сгенерированное изображение успешно отправлено в бот")
+                
                 # Удаляем старое сообщение
                 try:
                     await query.message.delete()
@@ -894,7 +915,13 @@ class ModerationBot:
                     pass
             except Exception as e:
                 logger.error("Ошибка при отправке сгенерированного изображения: %s", e, exc_info=True)
-                await query.edit_message_text(f"✅ Изображение сгенерировано, но произошла ошибка при отправке: {str(e)}")
+                try:
+                    if query.message.photo:
+                        await query.edit_message_caption(caption=f"✅ Изображение сгенерировано, но произошла ошибка при отправке: {str(e)}")
+                    else:
+                        await query.edit_message_text(f"✅ Изображение сгенерировано, но произошла ошибка при отправке: {str(e)}")
+                except:
+                    await self.app.bot.send_message(chat_id=query.from_user.id, text=f"✅ Изображение сгенерировано, но произошла ошибка при отправке: {str(e)}")
                 
         except Exception as e:
             logger.error("Ошибка при генерации изображения в стиле Симпсонов: %s", e, exc_info=True)
