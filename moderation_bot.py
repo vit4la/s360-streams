@@ -1558,23 +1558,31 @@ class ModerationBot:
             "<code>" in body or "</code>" in body
         )
         
-        if has_html_tags:
-            # Новый формат - body уже содержит весь HTML-текст с заголовком и хештегами
+        # ВСЕГДА используем body напрямую, если он не пустой
+        # GPT теперь всегда возвращает HTML с эмоджи в body
+        if body and body.strip():
             post_text = body
-            parse_mode = "HTML"
-            logger.info("Используется HTML parse_mode для draft_id=%s, post_text (first 300): %s", draft_id, post_text[:300])
+            # Проверяем HTML-теги для определения parse_mode
+            if has_html_tags:
+                parse_mode = "HTML"
+                logger.info("Используется HTML parse_mode для draft_id=%s", draft_id)
+            else:
+                parse_mode = None  # Без parse_mode, чтобы эмоджи отображались
+                logger.info("Используется parse_mode=None для draft_id=%s (эмоджи будут отображаться)", draft_id)
         else:
-            # Старый формат - формируем из отдельных полей
+            # Fallback на старый формат только если body пустой
             title = draft.get("title", "")
             hashtags = draft.get("hashtags", "")
-            post_text = f"{title}\n\n{body}\n\n{hashtags}"
+            post_text = f"{title}\n\n{body}\n\n{hashtags}" if body else f"{title}\n\n{hashtags}"
             parse_mode = "Markdown"
-            logger.info("Используется Markdown parse_mode для draft_id=%s (старый формат), post_text (first 300): %s", draft_id, post_text[:300])
+            logger.warning("Используется старый формат для draft_id=%s (body пустой)", draft_id)
         
         # Проверяем что post_text не пустой
         if not post_text or not post_text.strip():
             logger.error("_publish_draft: post_text ПУСТОЙ для draft_id=%s! body=%s", draft_id, body[:200] if body else "EMPTY")
             raise ValueError("post_text is empty")
+        
+        logger.info("_publish_draft: финальный post_text (first 300): %s, parse_mode=%s", post_text[:300], parse_mode)
 
         # Определяем, какую картинку использовать
         # Приоритет: final_image_url > photo_file_id
