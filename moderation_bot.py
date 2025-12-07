@@ -830,10 +830,14 @@ class ModerationBot:
             except:
                 await query.answer("🎨 Генерирую изображение...")
             
-            # Получаем текст поста
-            post_text = draft.get("body", "") or draft.get("title", "")
-            if not post_text:
-                await query.edit_message_text("❌ Не удалось получить текст поста для генерации.")
+            # Получаем оригинальный текст новости из source_posts
+            original_text = draft.get("text_original", "")
+            if not original_text:
+                # Fallback на body, если text_original нет
+                original_text = draft.get("body", "") or draft.get("title", "")
+            
+            if not original_text:
+                await query.edit_message_text("❌ Не удалось получить текст новости для генерации.")
                 return
             
             # Генерируем изображение (синхронная функция в отдельном потоке)
@@ -841,7 +845,7 @@ class ModerationBot:
             image_url = await loop.run_in_executor(
                 None, 
                 self._generate_simpsons_image, 
-                post_text
+                original_text
             )
             
             if not image_url:
@@ -1617,11 +1621,11 @@ class ModerationBot:
             logger.error("Ошибка при запросе к Pexels API: %s", e)
             return None
 
-    def _generate_simpsons_image(self, post_text: str) -> Optional[str]:
+    def _generate_simpsons_image(self, original_text: str) -> Optional[str]:
         """Генерировать изображение в стиле Симпсонов через DALL-E API (синхронная функция).
 
         Args:
-            post_text: Текст поста для генерации изображения
+            original_text: Оригинальный текст новости для генерации изображения
 
         Returns:
             URL сгенерированного изображения или None при ошибке
@@ -1631,17 +1635,12 @@ class ModerationBot:
         import uuid
         from io import BytesIO
         
-        # Формируем промпт для DALL-E
-        # Извлекаем заголовок из HTML (если есть) или используем первые 100 символов
-        import re
-        title_match = re.search(r'<b>(.*?)</b>', post_text, re.DOTALL)
-        if title_match:
-            title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()[:100]
-        else:
-            # Убираем HTML-теги и берем первые 100 символов
-            title = re.sub(r'<[^>]+>', '', post_text).strip()[:100]
+        # Формируем промпт для DALL-E согласно требованиям
+        # Используем оригинальный текст новости полностью
+        # Ограничиваем длину до 1000 символов (лимит DALL-E промпта)
+        news_text = original_text.strip()[:1000]
         
-        prompt = f"Generate an image in The Simpsons cartoon style for a Telegram channel post about tennis: {title}. The image should be colorful, fun, and suitable for a sports news channel. Style: The Simpsons animation, landscape orientation, 1024x1024 pixels."
+        prompt = f"Сгенерируй картинку для поста в тг канале в стиле Симпсонов (шутливой) на эту Новость: {news_text}"
         
         url = "https://api.openai.com/v1/images/generations"
         headers = {
