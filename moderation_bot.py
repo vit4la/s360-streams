@@ -440,12 +440,16 @@ class ModerationBot:
             "Выберите вариант публикации:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        
+        # Если один канал - завершаем, варианты публикации уже показаны
+        if len(config.TARGET_CHANNEL_IDS) == 1:
+            return
 
-        # Если несколько каналов, показываем выбор
-        keyboard = []
+        # Если несколько каналов, показываем выбор каналов ОТДЕЛЬНЫМ сообщением
+        keyboard_channels = []
         for channel_id in config.TARGET_CHANNEL_IDS:
             channel_name = channel_id if isinstance(channel_id, str) else str(channel_id)
-            keyboard.append([
+            keyboard_channels.append([
                 InlineKeyboardButton(
                     f"📢 {channel_name}",
                     callback_data=f"select_channel:{draft_id}:{channel_id}"
@@ -453,16 +457,18 @@ class ModerationBot:
             ])
 
         # Кнопка для выбора нескольких каналов
-        keyboard.append([
+        keyboard_channels.append([
             InlineKeyboardButton(
                 "📢 Выбрать несколько",
                 callback_data=f"select_multiple:{draft_id}"
             )
         ])
 
-        await query.edit_message_text(
-            "📢 Выберите целевой канал(ы) для публикации:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+        # Отправляем выбор каналов ОТДЕЛЬНЫМ сообщением, не перезаписывая варианты публикации
+        await self.app.bot.send_message(
+            chat_id=query.from_user.id,
+            text="📢 Выберите целевой канал(ы) для публикации:",
+            reply_markup=InlineKeyboardMarkup(keyboard_channels),
         )
 
     async def _handle_channel_selection(
