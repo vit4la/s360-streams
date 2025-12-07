@@ -348,10 +348,17 @@ def build_post_caption(text: str, video_link: str | None = None) -> str:
     - "✅ Поддержать группу: ..."
     - "tips.tips/000457857"
     А также при наличии добавляем в конец прямую ссылку на видео.
+    В начало добавляем заголовок "⚡️Новая трансляция от Прайм Теннис".
     """
+    # Добавляем заголовок в начало
+    header = "⚡️Новая трансляция от Прайм Теннис"
+    
     raw = (text or "").strip()
     if not raw:
-        return "Теннисная трансляция"
+        caption = header
+        if video_link:
+            caption = f"{caption}\n\nВидео: {video_link}"
+        return caption
 
     lines = [line.rstrip() for line in raw.splitlines()]
     cleaned_lines: List[str] = []
@@ -380,8 +387,14 @@ def build_post_caption(text: str, video_link: str | None = None) -> str:
         else:
             caption = f"Видео: {video_link}"
 
-    if not caption:
-        return "Теннисная трансляция"
+    # Добавляем заголовок в начало
+    if caption:
+        caption = f"{header}\n\n{caption}"
+    else:
+        caption = header
+        if video_link:
+            caption = f"{caption}\n\nВидео: {video_link}"
+
     return caption
 
 
