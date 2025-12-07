@@ -1478,16 +1478,28 @@ class ModerationBot:
         # Формируем текст поста
         # Если body содержит HTML-теги (новый формат), используем его напрямую
         # Иначе формируем из title/body/hashtags (старый формат для обратной совместимости)
-        if "<b>" in body or "<i>" in body:
+        # Проверяем наличие HTML-тегов (более полная проверка)
+        has_html_tags = (
+            "<b>" in body or "</b>" in body or
+            "<i>" in body or "</i>" in body or
+            "<u>" in body or "</u>" in body or
+            "<s>" in body or "</s>" in body or
+            "<a " in body or "</a>" in body or
+            "<code>" in body or "</code>" in body
+        )
+        
+        if has_html_tags:
             # Новый формат - body уже содержит весь HTML-текст с заголовком и хештегами
             post_text = body
             parse_mode = "HTML"
+            logger.info("Используется HTML parse_mode для draft_id=%s", draft_id)
         else:
             # Старый формат - формируем из отдельных полей
             title = draft.get("title", "")
             hashtags = draft.get("hashtags", "")
             post_text = f"{title}\n\n{body}\n\n{hashtags}"
             parse_mode = "Markdown"
+            logger.info("Используется Markdown parse_mode для draft_id=%s (старый формат)", draft_id)
 
         # Определяем, какую картинку использовать
         # Приоритет: final_image_url > photo_file_id
