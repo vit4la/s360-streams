@@ -1640,7 +1640,9 @@ class ModerationBot:
         # Ограничиваем длину до 1000 символов (лимит DALL-E промпта)
         news_text = original_text.strip()[:1000]
         
-        prompt = f"Сгенерируй картинку для поста в тг канале в стиле Симпсонов (шутливой) на эту Новость: {news_text}"
+        # DALL-E лучше работает с английским языком, но сохраняем смысл промпта
+        # Переводим промпт на английский, но оставляем оригинальный текст новости
+        prompt = f"Generate a humorous cartoon image in The Simpsons style for a Telegram channel post about this news: {news_text}. The image should be funny, colorful, and suitable for a sports news channel. Style: The Simpsons animation, 1024x1024 pixels, landscape orientation."
         
         url = "https://api.openai.com/v1/images/generations"
         headers = {
