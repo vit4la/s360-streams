@@ -1450,13 +1450,46 @@ class ModerationBot:
                             )
                             errors.append(f"Канал {channel_id}: не удалось отправить фото ({str(download_error)})")
                     else:
-                        # Это file_id
-                        message = await self.app.bot.send_photo(
-                            chat_id=channel_id,
-                            photo=image_to_use,
-                            caption=post_text,
-                            parse_mode=parse_mode,
-                        )
+                        # Это file_id - может быть как photo, так и document
+                        # Пытаемся отправить напрямую, если не получится - скачиваем и отправляем
+                        try:
+                            message = await self.app.bot.send_photo(
+                                chat_id=channel_id,
+                                photo=image_to_use,
+                                caption=post_text,
+                                parse_mode=parse_mode,
+                            )
+                            logger.info("Картинка отправлена успешно через file_id в канал %s", channel_id)
+                        except Exception as photo_error:
+                            # Если не получилось (например, file_id это document, а не photo),
+                            # скачиваем файл и отправляем как BytesIO
+                            logger.warning("Не удалось отправить через file_id (возможно, это document): %s. Скачиваю файл...", photo_error)
+                            try:
+                                # Скачиваем файл через get_file
+                                file = await self.app.bot.get_file(image_to_use)
+                                from io import BytesIO
+                                file_data = BytesIO()
+                                await file.download_to_memory(file_data)
+                                file_data.seek(0)
+                                file_data.name = "image.jpg"
+                                
+                                # Отправляем как фото
+                                message = await self.app.bot.send_photo(
+                                    chat_id=channel_id,
+                                    photo=file_data,
+                                    caption=post_text,
+                                    parse_mode=parse_mode,
+                                )
+                                logger.info("Картинка скачана и отправлена успешно в канал %s", channel_id)
+                            except Exception as download_error:
+                                logger.error("Ошибка при скачивании/отправке файла: %s", download_error, exc_info=True)
+                                # Если не удалось отправить с фото, отправляем только текст
+                                message = await self.app.bot.send_message(
+                                    chat_id=channel_id,
+                                    text=post_text,
+                                    parse_mode=parse_mode,
+                                )
+                                errors.append(f"Канал {channel_id}: не удалось отправить фото ({str(download_error)})")
                 else:
                     # Отправляем текстовое сообщение
                     message = await self.app.bot.send_message(
