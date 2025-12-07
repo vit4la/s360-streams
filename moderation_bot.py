@@ -766,17 +766,24 @@ class ModerationBot:
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик текстовых сообщений и фото."""
         user_id = update.effective_user.id
+        
+        logger.info("message_handler вызван: user_id=%s, есть фото=%s, есть текст=%s", 
+                   user_id, bool(update.message.photo), bool(update.message.text))
 
         if not self._is_moderator(user_id):
+            logger.debug("Пользователь %s не является модератором", user_id)
             return
 
         # Проверяем, находится ли пользователь в режиме редактирования
         if user_id in self.editing_states:
             draft_id = self.editing_states[user_id]
+            logger.info("Пользователь %s в режиме редактирования, draft_id=%s", user_id, draft_id)
             await self._handle_edit_text(update, draft_id)
             return
 
         # Проверяем, находится ли пользователь в режиме публикации (ожидание фото)
+        logger.info("Проверка publishing_states для user_id=%s: %s", user_id, user_id in self.publishing_states)
+        logger.info("Текущие publishing_states: %s", self.publishing_states)
         if user_id in self.publishing_states:
             draft_id, selected_channels = self.publishing_states[user_id]
             logger.info("Получено сообщение от user_id=%s в режиме публикации, draft_id=%s, есть фото: %s", 
