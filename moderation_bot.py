@@ -1409,6 +1409,7 @@ class ModerationBot:
                     message = await self.app.bot.send_message(
                         chat_id=channel_id,
                         text=post_text,
+                        parse_mode=parse_mode,
                     )
 
                 # Сохраняем информацию о публикации (только для первого успешного канала)
