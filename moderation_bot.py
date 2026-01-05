@@ -221,6 +221,8 @@ class ModerationBot:
                 parse_mode = "HTML" if has_html_tags else None
                 
                 # Если есть стилизованная картинка, отправляем её (как раньше работало)
+                # Если нет - пытаемся получить оригинальную из поста
+                photo_sent = False
                 if final_image_url:
                     try:
                         # Скачиваем картинку по URL перед отправкой (старая логика)
@@ -248,17 +250,54 @@ class ModerationBot:
                             reply_markup=reply_markup,
                         )
                         logger.info("Картинка успешно отправлена модератору: draft_id=%s", draft_id)
+                        photo_sent = True
                     except Exception as photo_error:
                         # Если не удалось отправить фото, отправляем только текст
                         logger.error("Ошибка при отправке фото модератору: draft_id=%s, error=%s", draft_id, photo_error, exc_info=True)
-                        await self.app.bot.send_message(
-                            chat_id=moderator_id,
-                            text=message_text,
-                            parse_mode=parse_mode,
-                            reply_markup=reply_markup,
-                        )
-                else:
-                    # Нет картинки - отправляем только текст
+                
+                # Если нет стилизованной картинки - пытаемся получить оригинальную из поста
+                if not photo_sent:
+                    source_channel_id = draft.get("channel_id")
+                    source_message_id = draft.get("message_id")
+                    
+                    if source_channel_id and source_message_id:
+                        try:
+                            # Пересылаем сообщение в личку модератора, чтобы получить фото
+                            forwarded = await self.app.bot.forward_message(
+                                chat_id=moderator_id,
+                                from_chat_id=source_channel_id,
+                                message_id=source_message_id,
+                            )
+                            
+                            # Извлекаем file_id картинки
+                            original_photo_file_id = None
+                            if forwarded.photo:
+                                original_photo_file_id = forwarded.photo[-1].file_id
+                            elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
+                                original_photo_file_id = forwarded.document.file_id
+                            
+                            # Удаляем пересланное сообщение
+                            try:
+                                await self.app.bot.delete_message(chat_id=moderator_id, message_id=forwarded.message_id)
+                            except:
+                                pass
+                            
+                            if original_photo_file_id:
+                                # Отправляем оригинальную картинку с текстом
+                                await self.app.bot.send_photo(
+                                    chat_id=moderator_id,
+                                    photo=original_photo_file_id,
+                                    caption=message_text,
+                                    parse_mode=parse_mode,
+                                    reply_markup=reply_markup,
+                                )
+                                logger.info("Оригинальная картинка отправлена модератору: draft_id=%s", draft_id)
+                                photo_sent = True
+                        except Exception as forward_error:
+                            logger.warning("Не удалось переслать сообщение для получения фото: %s", forward_error)
+                
+                # Если не удалось отправить картинку - отправляем только текст
+                if not photo_sent:
                     await self.app.bot.send_message(
                         chat_id=moderator_id,
                         text=message_text,
