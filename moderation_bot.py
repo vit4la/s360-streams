@@ -887,16 +887,15 @@ class ModerationBot:
             await query.edit_message_text("❌ У исходного поста нет картинки. Попробуйте прикрепить картинку вручную.")
             return
 
-        # Скачиваем фото и стилизуем его (используем тот же подход, что для пользовательских фото)
+        # Скачиваем фото и стилизуем его (такая же логика, как с Pexels)
         try:
-            await query.edit_message_text("🎨 Стилизую оригинальную картинку...")
+            await query.edit_message_text("🎨 Скачиваю и стилизую оригинальную картинку...")
             
             # Скачиваем фото по file_id
             file = await self.app.bot.get_file(photo_file_id)
             from io import BytesIO
             from pathlib import Path
             import uuid
-            import os
             
             file_data = BytesIO()
             await file.download_to_memory(file_data)
@@ -940,9 +939,9 @@ class ModerationBot:
                     draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
                 )
             else:
-                # Сохраняем final_image_url в БД
+                # Сохраняем final_image_url в БД (как с Pexels)
                 self.db.update_draft_post(draft_id, final_image_url=final_image_url)
-                logger.info("Сохранен final_image_url для draft_id=%s: %s", draft_id, final_image_url)
+                logger.info("Сохранен final_image_url для draft_id=%s (из оригинального фото): %s", draft_id, final_image_url)
                 
                 # Публикуем со стилизованной картинкой
                 _, selected_channels = self.publishing_states[user_id]
