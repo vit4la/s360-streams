@@ -555,26 +555,22 @@ class ModerationBot:
             self.publishing_states[user_id] = (draft_id, [target_channel])
         
         # Показываем варианты публикации
-        source_photo_file_id = draft.get("photo_file_id")
-        image_query = draft.get("image_query")
+        source_channel_id = draft.get("channel_id")
+        source_message_id = draft.get("message_id")
+        pexels_images_json = draft.get("pexels_images_json")
         
-        # Логируем для отладки - ВСЕ поля черновика
-        logger.info("_handle_approve: draft_id=%s", draft_id)
-        logger.info("_handle_approve: draft keys: %s", list(draft.keys()))
-        logger.info("_handle_approve: image_query=%s (type: %s)", image_query, type(image_query))
-        logger.info("_handle_approve: source_photo_file_id=%s", source_photo_file_id)
-        logger.info("_handle_approve: full draft: %s", draft)
+        logger.info("_handle_approve: draft_id=%s, channel_id=%s, message_id=%s, pexels_images=%s", 
+                   draft_id, source_channel_id, source_message_id, bool(pexels_images_json))
         
         keyboard = []
         
-        # Кнопка "📷 Использовать фото из поста" (если есть оригинальная картинка)
-        if source_photo_file_id:
+        # Кнопка "📷 Использовать фото из поста" (если есть channel_id и message_id - можем получить фото)
+        if source_channel_id and source_message_id:
             keyboard.append([
                 InlineKeyboardButton("📷 Использовать фото из поста", callback_data=f"publish_source_photo:{draft_id}")
             ])
         
         # Кнопка "🖼️ Использовать Pexels" (если есть картинки из Pexels)
-        pexels_images_json = draft.get("pexels_images_json")
         if pexels_images_json:
             keyboard.append([
                 InlineKeyboardButton("🖼️ Использовать Pexels", callback_data=f"select_image_for_publish:{draft_id}")
