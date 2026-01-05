@@ -836,7 +836,16 @@ class ModerationBot:
         # Получаем URL сохраненного фото из БД (если было скачано через Telethon)
         source_photo_url = draft.get("photo_file_id")  # В этом поле теперь хранится URL
         
-        if not source_photo_url or not source_photo_url.startswith("http"):
+        logger.info("_handle_publish_source_photo: draft_id=%s, source_photo_url=%s, type=%s", 
+                   draft_id, source_photo_url, type(source_photo_url))
+        
+        if not source_photo_url:
+            logger.warning("_handle_publish_source_photo: photo_file_id пустой в БД")
+            await query.edit_message_text("❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
+            return
+        
+        if not isinstance(source_photo_url, str) or not source_photo_url.startswith("http"):
+            logger.warning("_handle_publish_source_photo: photo_file_id не является HTTP URL: %s", source_photo_url)
             await query.edit_message_text("❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
             return
 

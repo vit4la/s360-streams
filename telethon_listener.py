@@ -128,9 +128,15 @@ class TelethonListener:
                 base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/") if hasattr(config, 'IMAGE_RENDER_SERVICE_URL') else "http://localhost:8000"
                 photo_url = f"{base_url}/source_photos/{photo_filename}"
                 
-                logger.info("Фото сохранено: %s", photo_file_path)
-                # Сохраняем URL в photo_file_id (переиспользуем поле)
-                photo_file_id = photo_url
+                # Проверяем, что файл действительно сохранен
+                if photo_file_path.exists():
+                    logger.info("Фото успешно сохранено: %s, размер: %s байт, URL: %s", 
+                               photo_file_path, photo_file_path.stat().st_size, photo_url)
+                    # Сохраняем URL в photo_file_id (переиспользуем поле)
+                    photo_file_id = photo_url
+                else:
+                    logger.error("Файл не был сохранен: %s", photo_file_path)
+                    photo_file_id = None
             except Exception as e:
                 logger.error("Ошибка при скачивании фото из поста: %s", e, exc_info=True)
                 photo_file_id = None
