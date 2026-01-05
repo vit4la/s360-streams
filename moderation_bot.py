@@ -866,13 +866,79 @@ class ModerationBot:
             await query.edit_message_text("❌ У исходного поста нет картинки. Попробуйте прикрепить картинку вручную.")
             return
 
-        _, selected_channels = self.publishing_states[user_id]
-        await self._publish_draft(draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id)
-        
-        # Очищаем состояние
-        del self.publishing_states[user_id]
-        
-        await query.edit_message_text("✅ Пост опубликован с исходной картинкой!")
+        # Скачиваем фото и стилизуем его (используем тот же подход, что для пользовательских фото)
+        try:
+            await query.edit_message_text("🎨 Стилизую оригинальную картинку...")
+            
+            # Скачиваем фото по file_id
+            file = await self.app.bot.get_file(photo_file_id)
+            from io import BytesIO
+            from pathlib import Path
+            import uuid
+            import os
+            
+            file_data = BytesIO()
+            await file.download_to_memory(file_data)
+            file_data.seek(0)
+            
+            # Сохраняем во временный файл
+            temp_dir = Path(__file__).parent / "temp_uploads"
+            temp_dir.mkdir(exist_ok=True)
+            temp_filename = f"temp_{uuid.uuid4().hex}.jpg"
+            temp_filepath = temp_dir / temp_filename
+            
+            with open(temp_filepath, "wb") as f:
+                f.write(file_data.read())
+            
+            # Загружаем файл в rendered_images для доступа через HTTP
+            rendered_dir = Path(__file__).parent / "rendered_images"
+            rendered_dir.mkdir(exist_ok=True)
+            temp_rendered_filepath = rendered_dir / temp_filename
+            
+            import shutil
+            shutil.copy(temp_filepath, temp_rendered_filepath)
+            
+            # Формируем URL для стилизации
+            base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/")
+            temp_image_url = f"{base_url}/rendered/{temp_filename}"
+            
+            # Стилизуем картинку
+            title = draft.get("title", "") or (draft.get("body", "")[:50] if draft.get("body") else "Tennis news")
+            final_image_url = self._render_image(temp_image_url, title)
+            
+            # Удаляем временный файл (rendered оставляем для сервиса)
+            try:
+                temp_filepath.unlink()
+            except Exception as cleanup_error:
+                logger.warning("Не удалось удалить временный файл: %s", cleanup_error)
+            
+            if not final_image_url:
+                await query.edit_message_text("❌ Не удалось стилизовать картинку. Публикую без стилизации.")
+                _, selected_channels = self.publishing_states[user_id]
+                await self._publish_draft(
+                    draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
+                )
+            else:
+                # Сохраняем final_image_url в БД
+                self.db.update_draft_post(draft_id, final_image_url=final_image_url)
+                logger.info("Сохранен final_image_url для draft_id=%s: %s", draft_id, final_image_url)
+                
+                # Публикуем со стилизованной картинкой
+                _, selected_channels = self.publishing_states[user_id]
+                await self._publish_draft(draft_id, selected_channels, user_id=user_id)
+            
+            # Очищаем состояние
+            del self.publishing_states[user_id]
+            
+            await query.edit_message_text("✅ Пост опубликован с оригинальной стилизованной картинкой!")
+            
+        except Exception as e:
+            logger.error("Ошибка при стилизации оригинальной картинки: %s", e, exc_info=True)
+            # Fallback: публикуем без стилизации
+            _, selected_channels = self.publishing_states[user_id]
+            await self._publish_draft(draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id)
+            del self.publishing_states[user_id]
+            await query.edit_message_text("⚠️ Ошибка при стилизации. Пост опубликован с оригинальной картинкой без стилизации.")
 
     async def _handle_publish_custom_photo(self, query, draft_id: int) -> None:
         """Перейти в режим ожидания своей картинки."""
