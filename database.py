@@ -269,7 +269,7 @@ class Database:
             FROM draft_posts d
             JOIN source_posts s ON d.source_post_id = s.id
             WHERE d.status = 'pending_moderation'
-            ORDER BY d.created_at ASC
+            ORDER BY d.created_at DESC
         """)
 
         rows = cursor.fetchall()
