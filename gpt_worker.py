@@ -328,26 +328,6 @@ class GPTWorker:
             # Можно пометить пост как failed или оставить new для повторной попытки
             return
 
-        # Ищем картинки через Pexels API (без стилизации - стилизация будет после выбора оператором)
-        image_query = result.get("image_query", "")
-        # Логируем что получили от GPT
-        logger.info("_process_post: GPT вернул image_query: %s (type: %s, empty: %s)", 
-                   image_query, type(image_query), not image_query or image_query == "")
-        final_image_url = None
-        pexels_images_json = None
-
-        if image_query and str(image_query).strip():
-            pexels_images = self._search_pexels_images(image_query)
-            if pexels_images and len(pexels_images) > 0:
-                # Сохраняем картинки в JSON для выбора оператором
-                import json
-                pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
-                logger.info("Найдено %s картинок в Pexels для поста: post_id=%s", len(pexels_images), post_id)
-            else:
-                logger.warning("Не найдены картинки в Pexels для запроса: %s", image_query)
-        else:
-            logger.debug("GPT не вернул image_query для поста: post_id=%s", post_id)
-
         # Создаём черновик
         # Извлекаем html_text из результата GPT
         html_text = result.get("html_text", "")
@@ -370,7 +350,7 @@ class GPTWorker:
             logger.info("Сконвертирован старый формат в HTML: %s", html_text[:200])
             logger.info("Сконвертированный html_text содержит эмоджи 🎾: %s", "🎾" in html_text)
         
-        # Извлекаем title и hashtags из HTML для БД
+        # Извлекаем title и hashtags из HTML для БД (нужно для стилизации картинки)
         title = ""
         hashtags = ""
         
@@ -392,6 +372,38 @@ class GPTWorker:
             title = html_text[:70] if len(html_text) > 70 else html_text
         if not hashtags:
             hashtags = "#теннис #Setka360"
+
+        # Ищем картинки через Pexels API и стилизуем первую автоматически
+        image_query = result.get("image_query", "")
+        # Логируем что получили от GPT
+        logger.info("_process_post: GPT вернул image_query: %s (type: %s, empty: %s)", 
+                   image_query, type(image_query), not image_query or image_query == "")
+        final_image_url = None
+        pexels_images_json = None
+
+        if image_query and str(image_query).strip():
+            pexels_images = self._search_pexels_images(image_query)
+            if pexels_images and len(pexels_images) > 0:
+                # Сохраняем картинки в JSON для выбора оператором
+                import json
+                pexels_images_json = json.dumps(pexels_images, ensure_ascii=False)
+                logger.info("Найдено %s картинок в Pexels для поста: post_id=%s", len(pexels_images), post_id)
+                
+                # Автоматически стилизуем первую картинку
+                first_image_url = pexels_images[0].get("url")
+                if first_image_url:
+                    logger.info("Стилизую первую картинку из Pexels: %s", first_image_url[:100])
+                    # Используем извлеченный title для стилизации
+                    title_for_render = title if title else (html_text[:50] if html_text else "Tennis news")
+                    final_image_url = self._render_image(first_image_url, title_for_render)
+                    if final_image_url:
+                        logger.info("Первая картинка успешно стилизована: %s", final_image_url)
+                    else:
+                        logger.warning("Не удалось стилизовать первую картинку из Pexels")
+            else:
+                logger.warning("Не найдены картинки в Pexels для запроса: %s", image_query)
+        else:
+            logger.debug("GPT не вернул image_query для поста: post_id=%s", post_id)
         
         # Логируем что сохраняем в БД
         logger.info("_process_post: Сохраняю в БД html_text (first 300 chars): %s", html_text[:300] if html_text else "EMPTY")
