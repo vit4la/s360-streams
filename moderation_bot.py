@@ -228,25 +228,59 @@ class ModerationBot:
                 photo_sent = False
                 if source_channel_id and source_message_id:
                     try:
-                        # Пересылаем сообщение в личку модератора, чтобы получить фото
-                        forwarded = await self.app.bot.forward_message(
-                            chat_id=moderator_id,
-                            from_chat_id=source_channel_id,
-                            message_id=source_message_id,
-                        )
-                        
-                        # Извлекаем file_id картинки
+                        # Пробуем несколько способов получения фото
                         original_photo_file_id = None
-                        if forwarded.photo:
-                            original_photo_file_id = forwarded.photo[-1].file_id
-                        elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
-                            original_photo_file_id = forwarded.document.file_id
                         
-                        # Удаляем пересланное сообщение
+                        # Способ 1: copy_message
                         try:
-                            await self.app.bot.delete_message(chat_id=moderator_id, message_id=forwarded.message_id)
-                        except:
-                            pass
+                            copied = await self.app.bot.copy_message(
+                                chat_id=moderator_id,
+                                from_chat_id=source_channel_id,
+                                message_id=source_message_id,
+                            )
+                            
+                            if copied.photo:
+                                original_photo_file_id = copied.photo[-1].file_id
+                            elif copied.document and copied.document.mime_type and copied.document.mime_type.startswith("image/"):
+                                original_photo_file_id = copied.document.file_id
+                            
+                            # Удаляем скопированное сообщение
+                            try:
+                                await self.app.bot.delete_message(chat_id=moderator_id, message_id=copied.message_id)
+                            except:
+                                pass
+                        except Exception:
+                            # Способ 2: get_messages
+                            try:
+                                messages = await self.app.bot.get_messages(
+                                    chat_id=source_channel_id,
+                                    message_ids=[source_message_id]
+                                )
+                                
+                                if messages and len(messages) > 0:
+                                    msg = messages[0]
+                                    if msg.photo:
+                                        original_photo_file_id = msg.photo[-1].file_id
+                                    elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith("image/"):
+                                        original_photo_file_id = msg.document.file_id
+                            except Exception:
+                                # Способ 3: forward_message (fallback)
+                                forwarded = await self.app.bot.forward_message(
+                                    chat_id=moderator_id,
+                                    from_chat_id=source_channel_id,
+                                    message_id=source_message_id,
+                                )
+                                
+                                if forwarded.photo:
+                                    original_photo_file_id = forwarded.photo[-1].file_id
+                                elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
+                                    original_photo_file_id = forwarded.document.file_id
+                                
+                                # Удаляем пересланное сообщение
+                                try:
+                                    await self.app.bot.delete_message(chat_id=moderator_id, message_id=forwarded.message_id)
+                                except:
+                                    pass
                         
                         if original_photo_file_id:
                             # Отправляем оригинальную картинку с текстом
@@ -260,7 +294,7 @@ class ModerationBot:
                             logger.info("Оригинальная картинка отправлена модератору: draft_id=%s", draft_id)
                             photo_sent = True
                     except Exception as forward_error:
-                        logger.warning("Не удалось переслать сообщение для получения фото: %s", forward_error)
+                        logger.warning("Не удалось получить фото из исходного поста: %s", forward_error)
                 
                 # Если не удалось отправить картинку - отправляем только текст
                 if not photo_sent:
