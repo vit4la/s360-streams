@@ -112,11 +112,36 @@ class TelethonListener:
         has_photo = bool(message.photo)
         has_document = bool(message.document)
         has_media = bool(message.media)
-        logger.info("Обработка сообщения: channel_id=%s, message_id=%s, has_photo=%s, has_document=%s, has_media=%s, media_type=%s", 
-                   channel_id, message_id, has_photo, has_document, has_media, 
-                   type(message.media).__name__ if message.media else "None")
+        media_type_name = type(message.media).__name__ if message.media else "None"
         
-        if message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
+        # Проверяем, является ли медиа изображением (разные типы)
+        is_image_media = False
+        if message.photo:
+            is_image_media = True
+        elif message.document:
+            mime_type = getattr(message.document, 'mime_type', None) or ''
+            if mime_type.startswith('image/'):
+                is_image_media = True
+        elif message.media:
+            # Проверяем тип медиа объекта
+            media_class_name = media_type_name
+            if 'Photo' in media_class_name or 'Document' in media_class_name:
+                # Если это Document, проверяем mime_type
+                if 'Document' in media_class_name:
+                    doc = getattr(message.media, 'document', None) or message.document
+                    if doc:
+                        mime_type = getattr(doc, 'mime_type', None) or ''
+                        if mime_type.startswith('image/'):
+                            is_image_media = True
+                else:
+                    # Если это Photo, то это точно изображение
+                    is_image_media = True
+        
+        logger.info("Обработка сообщения: channel_id=%s, message_id=%s, has_photo=%s, has_document=%s, has_media=%s, media_type=%s, is_image=%s", 
+                   channel_id, message_id, has_photo, has_document, has_media, media_type_name, is_image_media)
+        
+        # Пробуем скачать медиа, если оно есть (download_media работает с любым типом медиа)
+        if is_image_media or (has_media and message.media):
             try:
                 from pathlib import Path
                 import uuid
@@ -133,9 +158,14 @@ class TelethonListener:
                            channel_id, message_id, photo_file_path)
                 
                 try:
-                    # Используем download_media - это правильный способ для Telethon
-                    downloaded_path = await self.client.download_media(message, file=str(photo_file_path))
-                    logger.info("download_media вернул путь: %s", downloaded_path)
+                    # Используем download_media - это работает с любым типом медиа (Photo, Document, и т.д.)
+                    # Если медиа есть, пробуем скачать его
+                    if has_media:
+                        downloaded_path = await self.client.download_media(message, file=str(photo_file_path))
+                        logger.info("download_media вернул путь: %s", downloaded_path)
+                    else:
+                        logger.warning("Нет медиа для скачивания, хотя проверка прошла")
+                        raise ValueError("Нет медиа в сообщении")
                     
                     # Проверяем, что файл сохранен (download_media может вернуть другой путь)
                     if downloaded_path and Path(downloaded_path).exists():
