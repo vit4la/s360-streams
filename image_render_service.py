@@ -28,6 +28,9 @@ app = Flask(__name__)
 RENDERED_IMAGES_DIR = Path(__file__).parent / "rendered_images"
 RENDERED_IMAGES_DIR.mkdir(exist_ok=True)
 
+SOURCE_PHOTOS_DIR = Path(__file__).parent / "source_photos"
+SOURCE_PHOTOS_DIR.mkdir(exist_ok=True)
+
 # Базовый URL сервиса (для формирования полных URL картинок)
 SERVICE_BASE_URL = os.getenv("IMAGE_RENDER_SERVICE_URL", "http://localhost:8000")
 
@@ -351,6 +354,25 @@ def serve_rendered_image(filename: str):
 
     from flask import send_file
     return send_file(filepath, mimetype="image/jpeg")
+
+
+@app.route("/source_photos/<filename>", methods=["GET"])
+def serve_source_photo(filename: str):
+    """Отдать исходное фото из поста.
+    
+    Args:
+        filename: Имя файла
+    """
+    try:
+        file_path = SOURCE_PHOTOS_DIR / filename
+        if not file_path.exists():
+            return jsonify({"error": "File not found"}), 404
+        
+        from flask import send_file
+        return send_file(file_path, mimetype="image/jpeg")
+    except Exception as e:
+        logger.error("Ошибка при отдаче исходного фото: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/health", methods=["GET"])

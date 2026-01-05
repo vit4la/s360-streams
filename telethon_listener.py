@@ -105,14 +105,37 @@ class TelethonListener:
                         channel_id, message_id)
             return
 
-        # Получаем картинку из поста (если есть)
-        photo_file_id = None
-        if message.photo:
-            # Сохраняем file_id самой большой картинки
-            # Но через Telethon мы не можем получить file_id напрямую
-            # Нужно будет получить его через бота или сохранить как-то иначе
-            # Пока оставляем None, потом доработаем
-            pass
+        # Скачиваем картинку из поста (если есть) и сохраняем на сервер
+        photo_file_path = None
+        if message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
+            try:
+                from pathlib import Path
+                import uuid
+                
+                # Создаем директорию для сохранения оригинальных фото
+                photos_dir = Path(__file__).parent / "source_photos"
+                photos_dir.mkdir(exist_ok=True)
+                
+                # Скачиваем фото через Telethon
+                photo_filename = f"source_{uuid.uuid4().hex}.jpg"
+                photo_file_path = photos_dir / photo_filename
+                
+                logger.info("Скачивание фото из поста: channel_id=%s, message_id=%s", channel_id, message_id)
+                await self.client.download_media(message, file=str(photo_file_path))
+                
+                # Формируем URL для доступа к фото (через сервис стилизации или напрямую)
+                # Пока сохраняем путь, потом можно будет использовать через HTTP
+                base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/") if hasattr(config, 'IMAGE_RENDER_SERVICE_URL') else "http://localhost:8000"
+                photo_url = f"{base_url}/source_photos/{photo_filename}"
+                
+                logger.info("Фото сохранено: %s", photo_file_path)
+                # Сохраняем URL в photo_file_id (переиспользуем поле)
+                photo_file_id = photo_url
+            except Exception as e:
+                logger.error("Ошибка при скачивании фото из поста: %s", e, exc_info=True)
+                photo_file_id = None
+        else:
+            photo_file_id = None
 
         # Дата сообщения
         post_date = message.date if message.date else datetime.now()

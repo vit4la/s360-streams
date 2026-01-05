@@ -874,160 +874,32 @@ class ModerationBot:
             await query.edit_message_text("❌ Черновик не найден.")
             return
 
-        # Получаем file_id картинки из исходного поста
-        # Пробуем переслать сообщение из исходного канала в личку оператора, чтобы получить file_id
-        source_channel_id = draft.get("channel_id")
-        source_message_id = draft.get("message_id")
+        # Получаем URL сохраненного фото из БД (если было скачано через Telethon)
+        source_photo_url = draft.get("photo_file_id")  # В этом поле теперь хранится URL
         
-        if not source_channel_id or not source_message_id:
-            await query.edit_message_text("❌ Не удалось определить исходный пост.")
+        if not source_photo_url or not source_photo_url.startswith("http"):
+            await query.edit_message_text("❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
             return
 
-        photo_file_id = None
-        
+        # Стилизуем сохраненное фото (такая же логика, как с Pexels)
         try:
-            # Пробуем несколько способов получения фото:
-            # 1. copy_message (может работать лучше чем forward_message)
-            # 2. get_messages (если бот админ канала)
-            # 3. forward_message (fallback)
+            await query.edit_message_text("🎨 Стилизую оригинальную картинку...")
             
-            photo_file_id = None
-            
-            # Способ 1: copy_message
-            try:
-                copied = await self.app.bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=source_channel_id,
-                    message_id=source_message_id,
-                )
-                
-                if copied.photo:
-                    photo_file_id = copied.photo[-1].file_id
-                elif copied.document and copied.document.mime_type and copied.document.mime_type.startswith("image/"):
-                    photo_file_id = copied.document.file_id
-                
-                # Удаляем скопированное сообщение
-                try:
-                    await self.app.bot.delete_message(chat_id=user_id, message_id=copied.message_id)
-                except Exception:
-                    pass
-                    
-                logger.info("Получено фото через copy_message: file_id=%s", photo_file_id)
-            except Exception as copy_error:
-                logger.warning("copy_message не сработал: %s, пробуем get_messages", copy_error)
-                
-                # Способ 2: get_messages (если бот админ канала)
-                try:
-                    messages = await self.app.bot.get_messages(
-                        chat_id=source_channel_id,
-                        message_ids=[source_message_id]
-                    )
-                    
-                    if messages and len(messages) > 0:
-                        msg = messages[0]
-                        if msg.photo:
-                            photo_file_id = msg.photo[-1].file_id
-                        elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith("image/"):
-                            photo_file_id = msg.document.file_id
-                            
-                        logger.info("Получено фото через get_messages: file_id=%s", photo_file_id)
-                except Exception as get_error:
-                    logger.warning("get_messages не сработал: %s, пробуем forward_message", get_error)
-                    
-                    # Способ 3: forward_message (fallback)
-                    forwarded = await self.app.bot.forward_message(
-                        chat_id=user_id,
-                        from_chat_id=source_channel_id,
-                        message_id=source_message_id,
-                    )
-                    
-                    if forwarded.photo:
-                        photo_file_id = forwarded.photo[-1].file_id
-                    elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
-                        photo_file_id = forwarded.document.file_id
-                    
-                    # Удаляем пересланное сообщение
-                    try:
-                        await self.app.bot.delete_message(chat_id=user_id, message_id=forwarded.message_id)
-                    except Exception:
-                        pass
-                        
-                    logger.info("Получено фото через forward_message: file_id=%s", photo_file_id)
-                
-        except Exception as e:
-            logger.error("Ошибка при получении картинки из исходного поста: %s", e, exc_info=True)
-            await query.edit_message_text(
-                "❌ Не удалось получить картинку из исходного поста.\n"
-                "Возможные причины:\n"
-                "• Канал приватный и бот не имеет доступа\n"
-                "• В исходном посте нет картинки\n\n"
-                "Попробуйте прикрепить картинку вручную."
-            )
-            return
-        
-        if not photo_file_id:
-            await query.edit_message_text("❌ У исходного поста нет картинки. Попробуйте прикрепить картинку вручную.")
-            return
-
-        # Скачиваем фото и стилизуем его (такая же логика, как с Pexels)
-        try:
-            await query.edit_message_text("🎨 Скачиваю и стилизую оригинальную картинку...")
-            
-            # Скачиваем фото по file_id
-            file = await self.app.bot.get_file(photo_file_id)
-            from io import BytesIO
-            from pathlib import Path
-            import uuid
-            
-            file_data = BytesIO()
-            await file.download_to_memory(file_data)
-            file_data.seek(0)
-            
-            # Сохраняем во временный файл
-            temp_dir = Path(__file__).parent / "temp_uploads"
-            temp_dir.mkdir(exist_ok=True)
-            temp_filename = f"temp_{uuid.uuid4().hex}.jpg"
-            temp_filepath = temp_dir / temp_filename
-            
-            with open(temp_filepath, "wb") as f:
-                f.write(file_data.read())
-            
-            # Загружаем файл в rendered_images для доступа через HTTP
-            rendered_dir = Path(__file__).parent / "rendered_images"
-            rendered_dir.mkdir(exist_ok=True)
-            temp_rendered_filepath = rendered_dir / temp_filename
-            
-            import shutil
-            shutil.copy(temp_filepath, temp_rendered_filepath)
-            
-            # Формируем URL для стилизации
-            base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/")
-            temp_image_url = f"{base_url}/rendered/{temp_filename}"
-            
-            # Стилизуем картинку
+            # Стилизуем картинку по URL (как с Pexels)
             title = draft.get("title", "") or (draft.get("body", "")[:50] if draft.get("body") else "Tennis news")
-            final_image_url = self._render_image(temp_image_url, title)
-            
-            # Удаляем временный файл (rendered оставляем для сервиса)
-            try:
-                temp_filepath.unlink()
-            except Exception as cleanup_error:
-                logger.warning("Не удалось удалить временный файл: %s", cleanup_error)
+            final_image_url = self._render_image(source_photo_url, title)
             
             if not final_image_url:
-                await query.edit_message_text("❌ Не удалось стилизовать картинку. Публикую без стилизации.")
-                _, selected_channels = self.publishing_states[user_id]
-                await self._publish_draft(
-                    draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id
-                )
-            else:
-                # Сохраняем final_image_url в БД (как с Pexels)
-                self.db.update_draft_post(draft_id, final_image_url=final_image_url)
-                logger.info("Сохранен final_image_url для draft_id=%s (из оригинального фото): %s", draft_id, final_image_url)
-                
-                # Публикуем со стилизованной картинкой
-                _, selected_channels = self.publishing_states[user_id]
-                await self._publish_draft(draft_id, selected_channels, user_id=user_id)
+                await query.edit_message_text("❌ Не удалось стилизовать картинку. Попробуйте другую картинку.")
+                return
+            
+            # Сохраняем final_image_url в БД (как с Pexels)
+            self.db.update_draft_post(draft_id, final_image_url=final_image_url)
+            logger.info("Сохранен final_image_url для draft_id=%s (из оригинального фото): %s", draft_id, final_image_url)
+            
+            # Публикуем со стилизованной картинкой
+            _, selected_channels = self.publishing_states[user_id]
+            await self._publish_draft(draft_id, selected_channels, user_id=user_id)
             
             # Очищаем состояние
             del self.publishing_states[user_id]
@@ -1036,11 +908,8 @@ class ModerationBot:
             
         except Exception as e:
             logger.error("Ошибка при стилизации оригинальной картинки: %s", e, exc_info=True)
-            # Fallback: публикуем без стилизации
-            _, selected_channels = self.publishing_states[user_id]
-            await self._publish_draft(draft_id, selected_channels, photo_file_id=photo_file_id, user_id=user_id)
             del self.publishing_states[user_id]
-            await query.edit_message_text("⚠️ Ошибка при стилизации. Пост опубликован с оригинальной картинкой без стилизации.")
+            await query.edit_message_text(f"❌ Ошибка при стилизации: {str(e)}")
 
     async def _handle_publish_custom_photo(self, query, draft_id: int) -> None:
         """Перейти в режим ожидания своей картинки."""
