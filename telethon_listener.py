@@ -120,8 +120,23 @@ class TelethonListener:
                 photo_filename = f"source_{uuid.uuid4().hex}.jpg"
                 photo_file_path = photos_dir / photo_filename
                 
-                logger.info("Скачивание фото из поста: channel_id=%s, message_id=%s", channel_id, message_id)
-                await self.client.download_media(message, file=str(photo_file_path))
+                logger.info("Скачивание фото из поста: channel_id=%s, message_id=%s, has_photo=%s, has_document=%s", 
+                           channel_id, message_id, bool(message.photo), bool(message.document))
+                try:
+                    await self.client.download_media(message, file=str(photo_file_path))
+                    logger.info("Фото успешно скачано через download_media")
+                except Exception as download_error:
+                    logger.error("Ошибка при download_media: %s", download_error, exc_info=True)
+                    # Пробуем альтернативный способ
+                    try:
+                        if message.photo:
+                            photo_bytes = await self.client.download_file(message.photo, file=photo_file_path)
+                            logger.info("Фото скачано через download_file")
+                        else:
+                            raise download_error
+                    except Exception as alt_error:
+                        logger.error("Ошибка при альтернативном скачивании: %s", alt_error, exc_info=True)
+                        raise
                 
                 # Формируем URL для доступа к фото (через сервис стилизации или напрямую)
                 # Пока сохраняем путь, потом можно будет использовать через HTTP
