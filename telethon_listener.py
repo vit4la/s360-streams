@@ -106,7 +106,16 @@ class TelethonListener:
             return
 
         # Скачиваем картинку из поста (если есть) и сохраняем на сервер
-        photo_file_path = None
+        photo_file_id = None
+        
+        # Логируем все медиа в сообщении для отладки
+        has_photo = bool(message.photo)
+        has_document = bool(message.document)
+        has_media = bool(message.media)
+        logger.info("Обработка сообщения: channel_id=%s, message_id=%s, has_photo=%s, has_document=%s, has_media=%s, media_type=%s", 
+                   channel_id, message_id, has_photo, has_document, has_media, 
+                   type(message.media).__name__ if message.media else "None")
+        
         if message.photo or (message.document and message.document.mime_type and message.document.mime_type.startswith("image/")):
             try:
                 from pathlib import Path
@@ -120,43 +129,55 @@ class TelethonListener:
                 photo_filename = f"source_{uuid.uuid4().hex}.jpg"
                 photo_file_path = photos_dir / photo_filename
                 
-                logger.info("Скачивание фото из поста: channel_id=%s, message_id=%s, has_photo=%s, has_document=%s", 
-                           channel_id, message_id, bool(message.photo), bool(message.document))
+                logger.info("Начинаю скачивание фото: channel_id=%s, message_id=%s, путь=%s", 
+                           channel_id, message_id, photo_file_path)
+                
                 try:
-                    await self.client.download_media(message, file=str(photo_file_path))
-                    logger.info("Фото успешно скачано через download_media")
+                    # Используем download_media - это правильный способ для Telethon
+                    downloaded_path = await self.client.download_media(message, file=str(photo_file_path))
+                    logger.info("download_media вернул путь: %s", downloaded_path)
+                    
+                    # Проверяем, что файл сохранен (download_media может вернуть другой путь)
+                    if downloaded_path and Path(downloaded_path).exists():
+                        actual_path = Path(downloaded_path)
+                        logger.info("Файл сохранен по пути: %s, размер: %s байт", 
+                                   actual_path, actual_path.stat().st_size)
+                        # Если путь отличается, копируем в нужное место
+                        if actual_path != photo_file_path:
+                            import shutil
+                            shutil.copy(actual_path, photo_file_path)
+                            logger.info("Файл скопирован в: %s", photo_file_path)
+                    elif photo_file_path.exists():
+                        logger.info("Файл сохранен по ожидаемому пути: %s, размер: %s байт", 
+                                   photo_file_path, photo_file_path.stat().st_size)
+                    else:
+                        logger.error("Файл не найден ни по одному пути: downloaded_path=%s, expected_path=%s", 
+                                   downloaded_path, photo_file_path)
+                        raise FileNotFoundError(f"Файл не был сохранен: {photo_file_path}")
+                        
                 except Exception as download_error:
                     logger.error("Ошибка при download_media: %s", download_error, exc_info=True)
-                    # Пробуем альтернативный способ
-                    try:
-                        if message.photo:
-                            photo_bytes = await self.client.download_file(message.photo, file=photo_file_path)
-                            logger.info("Фото скачано через download_file")
-                        else:
-                            raise download_error
-                    except Exception as alt_error:
-                        logger.error("Ошибка при альтернативном скачивании: %s", alt_error, exc_info=True)
-                        raise
+                    raise
                 
-                # Формируем URL для доступа к фото (через сервис стилизации или напрямую)
-                # Пока сохраняем путь, потом можно будет использовать через HTTP
+                # Формируем URL для доступа к фото
                 base_url = config.IMAGE_RENDER_SERVICE_URL.rstrip("/") if hasattr(config, 'IMAGE_RENDER_SERVICE_URL') else "http://localhost:8000"
                 photo_url = f"{base_url}/source_photos/{photo_filename}"
                 
                 # Проверяем, что файл действительно сохранен
                 if photo_file_path.exists():
-                    logger.info("Фото успешно сохранено: %s, размер: %s байт, URL: %s", 
-                               photo_file_path, photo_file_path.stat().st_size, photo_url)
+                    file_size = photo_file_path.stat().st_size
+                    logger.info("✅ Фото успешно сохранено: %s, размер: %s байт, URL: %s", 
+                               photo_file_path, file_size, photo_url)
                     # Сохраняем URL в photo_file_id (переиспользуем поле)
                     photo_file_id = photo_url
                 else:
-                    logger.error("Файл не был сохранен: %s", photo_file_path)
+                    logger.error("❌ Файл не был сохранен: %s", photo_file_path)
                     photo_file_id = None
             except Exception as e:
-                logger.error("Ошибка при скачивании фото из поста: %s", e, exc_info=True)
+                logger.error("❌ Ошибка при скачивании фото из поста: %s", e, exc_info=True)
                 photo_file_id = None
         else:
-            photo_file_id = None
+            logger.debug("В сообщении нет фото: channel_id=%s, message_id=%s", channel_id, message_id)
 
         # Дата сообщения
         post_date = message.date if message.date else datetime.now()
