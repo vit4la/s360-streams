@@ -28,8 +28,11 @@ app = Flask(__name__)
 RENDERED_IMAGES_DIR = Path(__file__).parent / "rendered_images"
 RENDERED_IMAGES_DIR.mkdir(exist_ok=True)
 
-SOURCE_PHOTOS_DIR = Path(__file__).parent / "source_photos"
+# Используем абсолютный путь, чтобы файлы были доступны из любой директории
+# Если запускается из /root/s360-streams, используем эту директорию
+SOURCE_PHOTOS_DIR = Path("/root/s360-streams/source_photos")
 SOURCE_PHOTOS_DIR.mkdir(exist_ok=True)
+logger.info("SOURCE_PHOTOS_DIR установлен: %s", SOURCE_PHOTOS_DIR)
 
 # Базовый URL сервиса (для формирования полных URL картинок)
 SERVICE_BASE_URL = os.getenv("IMAGE_RENDER_SERVICE_URL", "http://localhost:8000")

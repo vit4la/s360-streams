@@ -148,8 +148,14 @@ class TelethonListener:
                 import uuid
                 
                 # Создаем директорию для сохранения оригинальных фото
-                photos_dir = Path(__file__).parent / "source_photos"
+                # Используем абсолютный путь, чтобы файлы были доступны сервису стилизации
+                base_dir = Path(__file__).parent
+                photos_dir = base_dir / "source_photos"
                 photos_dir.mkdir(exist_ok=True)
+                
+                # Также создаем в директории сервиса стилизации (если они разные)
+                render_service_dir = base_dir / "source_photos"  # Пока используем ту же директорию
+                render_service_dir.mkdir(exist_ok=True)
                 
                 # Скачиваем фото через Telethon
                 photo_filename = f"source_{uuid.uuid4().hex}.jpg"
