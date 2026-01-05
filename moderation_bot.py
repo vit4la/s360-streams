@@ -275,8 +275,8 @@ class ModerationBot:
                     )
                 
                 sent_to.add(moderator_id)
-                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, has_image=%s", 
-                           draft_id, moderator_id, bool(final_image_url))
+                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, original_photo_sent=%s, channel_id=%s, message_id=%s", 
+                           draft_id, moderator_id, original_photo_sent, source_channel_id, source_message_id)
             except Exception as e:
                 logger.error(
                     "Ошибка при отправке черновика модератору: draft_id=%s, "
