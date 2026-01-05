@@ -182,17 +182,14 @@ class ModerationBot:
         """
         draft_id = draft["id"]
         message_text = self._format_draft_message(draft)
-        photo_file_id = draft.get("photo_file_id")  # Оригинальная картинка из поста
+        final_image_url = draft.get("final_image_url")  # Стилизованная картинка (если есть)
         image_query = draft.get("image_query")
         pexels_images_json = draft.get("pexels_images_json")
         
         # Логируем для отладки
         body = draft.get("body", "")
-        logger.info("_send_draft_to_moderators: draft_id=%s, body содержит эмоджи 🎾: %s, body (first 200): %s", 
-                   draft_id, "🎾" in body, body[:200])
-        logger.info("_send_draft_to_moderators: message_text содержит эмоджи 🎾: %s, message_text (first 200): %s", 
-                   "🎾" in message_text, message_text[:200])
-        logger.info("_send_draft_to_moderators: photo_file_id=%s, image_query=%s", photo_file_id, image_query)
+        logger.info("_send_draft_to_moderators: draft_id=%s, final_image_url=%s, image_query=%s", 
+                   draft_id, bool(final_image_url), image_query)
 
         # Кнопки действий
         keyboard = [
@@ -223,50 +220,45 @@ class ModerationBot:
                 )
                 parse_mode = "HTML" if has_html_tags else None
                 
-                # Пытаемся показать оригинальную картинку из поста (даже если photo_file_id в БД None)
-                # Пересылаем сообщение из исходного канала, чтобы получить фото
-                source_channel_id = draft.get("channel_id")
-                source_message_id = draft.get("message_id")
-                
-                original_photo_sent = False
-                if source_channel_id and source_message_id:
+                # Если есть стилизованная картинка, отправляем её (как раньше работало)
+                if final_image_url:
                     try:
-                        # Пересылаем сообщение в личку модератора, чтобы получить фото
-                        forwarded = await self.app.bot.forward_message(
+                        # Скачиваем картинку по URL перед отправкой (старая логика)
+                        logger.info("Скачивание картинки для отправки модератору: %s", final_image_url[:100])
+                        import httpx
+                        from io import BytesIO
+                        proxy_url = None
+                        if config.OPENAI_PROXY:
+                            proxy_url = config.OPENAI_PROXY
+                            if proxy_url.startswith("http://"):
+                                proxy_url = proxy_url.replace("http://", "socks5://", 1)
+                        
+                        with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                            resp = client.get(final_image_url)
+                            resp.raise_for_status()
+                            image_data = BytesIO(resp.content)
+                            image_data.name = "image.jpg"
+                        
+                        logger.info("Картинка скачана, отправляю модератору: draft_id=%s, moderator_id=%s", draft_id, moderator_id)
+                        await self.app.bot.send_photo(
                             chat_id=moderator_id,
-                            from_chat_id=source_channel_id,
-                            message_id=source_message_id,
+                            photo=image_data,
+                            caption=message_text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup,
                         )
-                        
-                        # Извлекаем file_id картинки
-                        original_photo_file_id = None
-                        if forwarded.photo:
-                            original_photo_file_id = forwarded.photo[-1].file_id
-                        elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
-                            original_photo_file_id = forwarded.document.file_id
-                        
-                        # Удаляем пересланное сообщение
-                        try:
-                            await self.app.bot.delete_message(chat_id=moderator_id, message_id=forwarded.message_id)
-                        except:
-                            pass
-                        
-                        if original_photo_file_id:
-                            # Отправляем оригинальную картинку с текстом
-                            await self.app.bot.send_photo(
-                                chat_id=moderator_id,
-                                photo=original_photo_file_id,
-                                caption=message_text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup,
-                            )
-                            logger.info("Оригинальная картинка отправлена модератору: draft_id=%s", draft_id)
-                            original_photo_sent = True
-                    except Exception as forward_error:
-                        logger.warning("Не удалось переслать сообщение для получения фото: %s", forward_error)
-                
-                # Если не удалось отправить оригинальную картинку - отправляем только текст
-                if not original_photo_sent:
+                        logger.info("Картинка успешно отправлена модератору: draft_id=%s", draft_id)
+                    except Exception as photo_error:
+                        # Если не удалось отправить фото, отправляем только текст
+                        logger.error("Ошибка при отправке фото модератору: draft_id=%s, error=%s", draft_id, photo_error, exc_info=True)
+                        await self.app.bot.send_message(
+                            chat_id=moderator_id,
+                            text=message_text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup,
+                        )
+                else:
+                    # Нет картинки - отправляем только текст
                     await self.app.bot.send_message(
                         chat_id=moderator_id,
                         text=message_text,
@@ -275,8 +267,8 @@ class ModerationBot:
                     )
                 
                 sent_to.add(moderator_id)
-                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, original_photo_sent=%s, channel_id=%s, message_id=%s", 
-                           draft_id, moderator_id, original_photo_sent, source_channel_id, source_message_id)
+                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, has_image=%s", 
+                           draft_id, moderator_id, bool(final_image_url))
             except Exception as e:
                 logger.error(
                     "Ошибка при отправке черновика модератору: draft_id=%s, "
