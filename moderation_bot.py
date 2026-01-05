@@ -221,80 +221,39 @@ class ModerationBot:
                 )
                 parse_mode = "HTML" if has_html_tags else None
                 
-                # Пытаемся получить оригинальную картинку из поста
-                source_channel_id = draft.get("channel_id")
-                source_message_id = draft.get("message_id")
+                # Пытаемся показать оригинальную картинку из поста (если была сохранена через Telethon)
+                source_photo_url = draft.get("photo_file_id")  # В этом поле теперь хранится URL
                 
                 photo_sent = False
-                if source_channel_id and source_message_id:
+                if source_photo_url and source_photo_url.startswith("http"):
                     try:
-                        # Пробуем несколько способов получения фото
-                        original_photo_file_id = None
+                        # Скачиваем фото по URL и отправляем модератору
+                        import httpx
+                        from io import BytesIO
+                        proxy_url = None
+                        if config.OPENAI_PROXY:
+                            proxy_url = config.OPENAI_PROXY
+                            if proxy_url.startswith("http://"):
+                                proxy_url = proxy_url.replace("http://", "socks5://", 1)
                         
-                        # Способ 1: copy_message
-                        try:
-                            copied = await self.app.bot.copy_message(
-                                chat_id=moderator_id,
-                                from_chat_id=source_channel_id,
-                                message_id=source_message_id,
-                            )
-                            
-                            if copied.photo:
-                                original_photo_file_id = copied.photo[-1].file_id
-                            elif copied.document and copied.document.mime_type and copied.document.mime_type.startswith("image/"):
-                                original_photo_file_id = copied.document.file_id
-                            
-                            # Удаляем скопированное сообщение
-                            try:
-                                await self.app.bot.delete_message(chat_id=moderator_id, message_id=copied.message_id)
-                            except:
-                                pass
-                        except Exception:
-                            # Способ 2: get_messages
-                            try:
-                                messages = await self.app.bot.get_messages(
-                                    chat_id=source_channel_id,
-                                    message_ids=[source_message_id]
-                                )
-                                
-                                if messages and len(messages) > 0:
-                                    msg = messages[0]
-                                    if msg.photo:
-                                        original_photo_file_id = msg.photo[-1].file_id
-                                    elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith("image/"):
-                                        original_photo_file_id = msg.document.file_id
-                            except Exception:
-                                # Способ 3: forward_message (fallback)
-                                forwarded = await self.app.bot.forward_message(
-                                    chat_id=moderator_id,
-                                    from_chat_id=source_channel_id,
-                                    message_id=source_message_id,
-                                )
-                                
-                                if forwarded.photo:
-                                    original_photo_file_id = forwarded.photo[-1].file_id
-                                elif forwarded.document and forwarded.document.mime_type and forwarded.document.mime_type.startswith("image/"):
-                                    original_photo_file_id = forwarded.document.file_id
-                                
-                                # Удаляем пересланное сообщение
-                                try:
-                                    await self.app.bot.delete_message(chat_id=moderator_id, message_id=forwarded.message_id)
-                                except:
-                                    pass
+                        with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                            resp = client.get(source_photo_url)
+                            resp.raise_for_status()
+                            image_data = BytesIO(resp.content)
+                            image_data.name = "image.jpg"
                         
-                        if original_photo_file_id:
-                            # Отправляем оригинальную картинку с текстом
-                            await self.app.bot.send_photo(
-                                chat_id=moderator_id,
-                                photo=original_photo_file_id,
-                                caption=message_text,
-                                parse_mode=parse_mode,
-                                reply_markup=reply_markup,
-                            )
-                            logger.info("Оригинальная картинка отправлена модератору: draft_id=%s", draft_id)
-                            photo_sent = True
-                    except Exception as forward_error:
-                        logger.warning("Не удалось получить фото из исходного поста: %s", forward_error)
+                        # Отправляем оригинальную картинку с текстом
+                        await self.app.bot.send_photo(
+                            chat_id=moderator_id,
+                            photo=image_data,
+                            caption=message_text,
+                            parse_mode=parse_mode,
+                            reply_markup=reply_markup,
+                        )
+                        logger.info("Оригинальная картинка отправлена модератору: draft_id=%s", draft_id)
+                        photo_sent = True
+                    except Exception as photo_error:
+                        logger.warning("Не удалось отправить оригинальную картинку: %s", photo_error)
                 
                 # Если не удалось отправить картинку - отправляем только текст
                 if not photo_sent:
