@@ -227,16 +227,34 @@ class ModerationBot:
                 # Если есть стилизованная картинка, отправляем её с текстом
                 if final_image_url:
                     try:
+                        # Скачиваем картинку по URL перед отправкой
+                        logger.info("Скачивание картинки для отправки модератору: %s", final_image_url[:100])
+                        import httpx
+                        from io import BytesIO
+                        proxy_url = None
+                        if config.OPENAI_PROXY:
+                            proxy_url = config.OPENAI_PROXY
+                            if proxy_url.startswith("http://"):
+                                proxy_url = proxy_url.replace("http://", "socks5://", 1)
+                        
+                        with httpx.Client(proxy=proxy_url, timeout=30.0) as client:
+                            resp = client.get(final_image_url)
+                            resp.raise_for_status()
+                            image_data = BytesIO(resp.content)
+                            image_data.name = "image.jpg"
+                        
+                        logger.info("Картинка скачана, отправляю модератору: draft_id=%s, moderator_id=%s", draft_id, moderator_id)
                         await self.app.bot.send_photo(
                             chat_id=moderator_id,
-                            photo=final_image_url,  # Сервис уже возвращает полный URL
+                            photo=image_data,
                             caption=message_text,
                             parse_mode=parse_mode,
                             reply_markup=reply_markup,
                         )
+                        logger.info("Картинка успешно отправлена модератору: draft_id=%s", draft_id)
                     except Exception as photo_error:
                         # Если не удалось отправить фото, отправляем только текст
-                        logger.warning("Не удалось отправить фото, отправляем только текст: %s", photo_error)
+                        logger.error("Ошибка при отправке фото модератору: draft_id=%s, error=%s", draft_id, photo_error, exc_info=True)
                         await self.app.bot.send_message(
                             chat_id=moderator_id,
                             text=message_text,
