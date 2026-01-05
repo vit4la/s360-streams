@@ -302,6 +302,7 @@ class ModerationBot:
         else:
             logger.info("Нет черновиков для отправки (всего pending: %s)", len(all_pending))
 
+        # Пробуем отправить черновики, пропуская старые
         for draft in pending_drafts:
             draft_id = draft["id"]
             logger.info("Обрабатываю черновик draft_id=%s", draft_id)
@@ -314,19 +315,15 @@ class ModerationBot:
                     logger.info("Черновик draft_id=%s уже отправлен ВСЕМ модераторам, пропускаю", draft_id)
                     continue
             
-            # ВРЕМЕННО: не пропускаем старые черновики для тестирования
             # Пропускаем старые черновики (созданные более 7 дней назад)
-            # Это предотвращает отправку очень старых черновиков при перезапуске
             import datetime
             created_at_str = draft.get("created_at")
             if created_at_str:
                 try:
-                    # Парсим дату создания (формат: YYYY-MM-DD HH:MM:SS)
                     created_at = datetime.datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
                     now = datetime.datetime.now()
                     age_hours = (now - created_at).total_seconds() / 3600
                     logger.info("Черновик draft_id=%s, возраст: %.1f часов", draft_id, age_hours)
-                    # Увеличили лимит до 7 дней (168 часов) для тестирования
                     if age_hours > 168:
                         logger.info("Пропускаем очень старый черновик: draft_id=%s, возраст=%.1f часов", draft_id, age_hours)
                         continue
@@ -336,6 +333,8 @@ class ModerationBot:
             # Отправляем черновик
             logger.info("Отправляю черновик draft_id=%s модераторам", draft_id)
             await self._send_draft_to_moderators(draft)
+            # Отправили один черновик - выходим (MAX_DRAFTS_PER_CHECK = 1)
+            break
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /start."""
