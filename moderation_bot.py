@@ -599,32 +599,46 @@ class ModerationBot:
         
         keyboard = []
         
-        # Кнопка "Выбрать картинку" - ВСЕГДА показываем (если нет image_query, сгенерируем при нажатии)
+        # Кнопка "📷 Использовать фото из поста" (если есть оригинальная картинка)
+        if source_photo_file_id:
+            keyboard.append([
+                InlineKeyboardButton("📷 Использовать фото из поста", callback_data=f"publish_source_photo:{draft_id}")
+            ])
+        
+        # Кнопка "🖼️ Использовать Pexels" (если есть картинки из Pexels)
+        pexels_images_json = draft.get("pexels_images_json")
+        if pexels_images_json:
+            keyboard.append([
+                InlineKeyboardButton("🖼️ Использовать Pexels", callback_data=f"select_image_for_publish:{draft_id}")
+            ])
+        
+        # Кнопка "🎨 В стиле Симпсонов"
         keyboard.append([
-            InlineKeyboardButton("🖼️ Выбрать картинку", callback_data=f"select_image_for_publish:{draft_id}")
+            InlineKeyboardButton("🎨 В стиле Симпсонов", callback_data=f"generate_simpsons:{draft_id}")
         ])
-        logger.info("_handle_approve: Добавляю кнопку 'Выбрать картинку' для draft_id=%s (image_query=%s)", draft_id, image_query)
         
         # Кнопка "Без картинки"
         keyboard.append([
             InlineKeyboardButton("🚫 Без картинки", callback_data=f"publish_no_photo:{draft_id}")
         ])
         
-        # Кнопка "Вставить свою" - всегда доступна
-        keyboard.append([
-            InlineKeyboardButton("📤 Вставить свою", callback_data=f"publish_custom_photo:{draft_id}")
-        ])
-        
-        # Кнопка "Использовать фото из поста" - только если есть
-        if source_photo_file_id:
-            keyboard.append([
-                InlineKeyboardButton("📷 Использовать фото из поста", callback_data=f"publish_source_photo:{draft_id}")
-            ])
-        
-        await query.edit_message_text(
-            "Выберите вариант публикации:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            if query.message.photo:
+                await query.edit_message_caption(
+                    caption="📸 Выберите вариант публикации:",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                await query.edit_message_text(
+                    "📸 Выберите вариант публикации:",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        except:
+            await self.app.bot.send_message(
+                chat_id=user_id,
+                text="📸 Выберите вариант публикации:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         
         # Если один канал - завершаем, варианты публикации уже показаны
         if len(config.TARGET_CHANNEL_IDS) == 1:
