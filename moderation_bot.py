@@ -189,8 +189,8 @@ class ModerationBot:
         
         # Логируем для отладки
         body = draft.get("body", "")
-        logger.info("_send_draft_to_moderators: draft_id=%s, final_image_url=%s, image_query=%s", 
-                   draft_id, bool(final_image_url), image_query)
+        logger.info("_send_draft_to_moderators: draft_id=%s, image_query=%s", 
+                   draft_id, image_query)
 
         # Кнопки действий
         keyboard = [
@@ -272,8 +272,8 @@ class ModerationBot:
                     )
                 
                 sent_to.add(moderator_id)
-                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, has_image=%s", 
-                           draft_id, moderator_id, bool(final_image_url))
+                logger.info("Черновик отправлен модератору: draft_id=%s, moderator_id=%s, photo_sent=%s", 
+                           draft_id, moderator_id, photo_sent)
             except Exception as e:
                 logger.error(
                     "Ошибка при отправке черновика модератору: draft_id=%s, "
