@@ -41,6 +41,8 @@ BRAND_COLOR = "#7FFF00"  # Chartreuse (салатовый/лаймовый)
 BORDER_WIDTH = 8
 # Путь к логотипу
 LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
+# Путь к шаблону рамки (PNG из Figma)
+TEMPLATE_PATH = Path(__file__).parent / "assets" / "template.png"
 
 
 def download_image(url: str) -> Optional[Image.Image]:
@@ -110,15 +112,58 @@ def resize_and_crop(img: Image.Image, target_width: int, target_height: int) -> 
     return img
 
 
-def apply_brand_template(img: Image.Image) -> Image.Image:
+def apply_brand_template(img: Image.Image, title: str = "") -> Image.Image:
     """Наложить фирменный шаблон на изображение.
 
     Args:
         img: Изображение 1320x1320
+        title: Заголовок для отображения на баннере (опционально)
 
     Returns:
         Изображение с наложенным шаблоном
     """
+    # Проверяем, есть ли PNG-шаблон из Figma
+    if TEMPLATE_PATH.exists():
+        try:
+            logger.info("Используется PNG-шаблон из Figma: %s", TEMPLATE_PATH)
+            template = Image.open(TEMPLATE_PATH)
+            # Конвертируем в RGBA если нужно
+            if template.mode != "RGBA":
+                template = template.convert("RGBA")
+            
+            # Изменяем размер шаблона до нужного размера (если отличается)
+            if template.size != (FINAL_WIDTH, FINAL_HEIGHT):
+                template = template.resize((FINAL_WIDTH, FINAL_HEIGHT), Image.Resampling.LANCZOS)
+                logger.info("Шаблон изменен до размера %sx%s", FINAL_WIDTH, FINAL_HEIGHT)
+            
+            # Изменяем размер исходного изображения до размера шаблона
+            img_resized = img.resize((FINAL_WIDTH, FINAL_HEIGHT), Image.Resampling.LANCZOS)
+            
+            # Создаём результат: сначала фото, потом накладываем шаблон
+            result = Image.new("RGBA", (FINAL_WIDTH, FINAL_HEIGHT))
+            result.paste(img_resized, (0, 0))
+            
+            # Накладываем шаблон поверх фото (с прозрачностью)
+            result = Image.alpha_composite(result, template)
+            
+            # Если нужно добавить текст заголовка на баннер (если title передан)
+            if title:
+                # Пытаемся найти область баннера и добавить текст
+                # Это можно доработать, если нужно точное позиционирование
+                pass
+            
+            # Конвертируем обратно в RGB для сохранения
+            result = result.convert("RGB")
+            logger.info("PNG-шаблон успешно применен")
+            return result
+            
+        except Exception as e:
+            logger.error("Ошибка при загрузке PNG-шаблона: %s, используем программную отрисовку", e)
+            # Продолжаем со старой логикой
+    
+    # Старая логика (программная отрисовка) - используется если шаблона нет
+    logger.info("Используется программная отрисовка шаблона")
+    
     # Создаём новое изображение с рамкой
     # Внутренний размер (без рамки)
     inner_width = FINAL_WIDTH - (BORDER_WIDTH * 2)
@@ -268,10 +313,10 @@ def render_image():
 
         # Накладываем шаблон
         if template == "default":
-            img = apply_brand_template(img)
+            img = apply_brand_template(img, title=title)
         else:
             logger.warning("Неизвестный шаблон: %s, используем default", template)
-            img = apply_brand_template(img)
+            img = apply_brand_template(img, title=title)
 
         # Сохраняем как JPEG
         filename = f"{uuid.uuid4().hex}.jpg"
