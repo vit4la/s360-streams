@@ -141,7 +141,8 @@ class TelethonListener:
                    channel_id, message_id, has_photo, has_document, has_media, media_type_name, is_image_media)
         
         # Пробуем скачать медиа, если оно есть (download_media работает с любым типом медиа)
-        if is_image_media or (has_media and message.media):
+        # Если есть медиа, пробуем скачать его - даже если тип не определен как изображение
+        if has_media and message.media:
             try:
                 from pathlib import Path
                 import uuid
