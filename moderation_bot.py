@@ -347,6 +347,23 @@ class ModerationBot:
         # Проверяем и отправляем новые черновики
         await self._check_and_send_new_drafts()
 
+    async def _edit_query_message(self, query, text: str, reply_markup=None) -> None:
+        """Безопасное редактирование сообщения с callback query - автоматически выбирает edit_message_text или edit_message_caption."""
+        try:
+            if query.message and query.message.photo:
+                # Сообщение содержит фото - редактируем caption
+                await query.edit_message_caption(caption=text, reply_markup=reply_markup)
+            else:
+                # Сообщение без фото - редактируем текст
+                await query.edit_message_text(text=text, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error("Ошибка при редактировании сообщения: %s", e, exc_info=True)
+            # Fallback: пытаемся отправить новое сообщение
+            try:
+                await query.message.reply_text(text, reply_markup=reply_markup)
+            except:
+                pass
+
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик callback-запросов от inline-кнопок."""
         query = None
@@ -480,7 +497,7 @@ class ModerationBot:
                 logger.warning("Неизвестное действие в callback: %s, data=%s", action, data)
                 if query:
                     try:
-                        await query.edit_message_text(f"❌ Неизвестное действие: {action}")
+                        await self._edit_query_message(query, f"❌ Неизвестное действие: {action}")
                         await query.answer(f"Неизвестное действие: {action}")
                     except:
                         pass
@@ -489,7 +506,7 @@ class ModerationBot:
             if query:
                 try:
                     await query.answer("❌ Произошла ошибка при обработке запроса", show_alert=True)
-                    await query.edit_message_text(f"❌ Произошла ошибка: {str(e)}")
+                    await self._edit_query_message(query, f"❌ Произошла ошибка: {str(e)}")
                 except Exception as e2:
                     logger.error("Не удалось отправить сообщение об ошибке: %s", e2, exc_info=True)
 
@@ -850,12 +867,12 @@ class ModerationBot:
         user_id = query.from_user.id
         
         if user_id not in self.publishing_states:
-            await query.edit_message_text("❌ Ошибка: состояние потеряно.")
+            await self._edit_query_message(query, "❌ Ошибка: состояние потеряно.")
             return
 
         draft = self.db.get_draft_post(draft_id)
         if not draft:
-            await query.edit_message_text("❌ Черновик не найден.")
+            await self._edit_query_message(query, "❌ Черновик не найден.")
             return
 
         # Получаем URL сохраненного фото из БД (если было скачано через Telethon)
@@ -866,24 +883,24 @@ class ModerationBot:
         
         if not source_photo_url:
             logger.warning("_handle_publish_source_photo: photo_file_id пустой в БД")
-            await query.edit_message_text("❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
+            await self._edit_query_message(query, "❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
             return
         
         if not isinstance(source_photo_url, str) or not source_photo_url.startswith("http"):
             logger.warning("_handle_publish_source_photo: photo_file_id не является HTTP URL: %s", source_photo_url)
-            await query.edit_message_text("❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
+            await self._edit_query_message(query, "❌ У исходного поста нет сохраненной картинки. Попробуйте прикрепить картинку вручную.")
             return
 
         # Стилизуем сохраненное фото (такая же логика, как с Pexels)
         try:
-            await query.edit_message_text("🎨 Стилизую оригинальную картинку...")
+            await self._edit_query_message(query, "🎨 Стилизую оригинальную картинку...")
             
             # Стилизуем картинку по URL (как с Pexels)
             title = draft.get("title", "") or (draft.get("body", "")[:50] if draft.get("body") else "Tennis news")
             final_image_url = self._render_image(source_photo_url, title)
             
             if not final_image_url:
-                await query.edit_message_text("❌ Не удалось стилизовать картинку. Попробуйте другую картинку.")
+                await self._edit_query_message(query, "❌ Не удалось стилизовать картинку. Попробуйте другую картинку.")
                 return
             
             # Сохраняем final_image_url в БД (как с Pexels)
@@ -897,12 +914,13 @@ class ModerationBot:
             # Очищаем состояние
             del self.publishing_states[user_id]
             
-            await query.edit_message_text("✅ Пост опубликован с оригинальной стилизованной картинкой!")
+            await self._edit_query_message(query, "✅ Пост опубликован с оригинальной стилизованной картинкой!")
             
         except Exception as e:
             logger.error("Ошибка при стилизации оригинальной картинки: %s", e, exc_info=True)
-            del self.publishing_states[user_id]
-            await query.edit_message_text(f"❌ Ошибка при стилизации: {str(e)}")
+            if user_id in self.publishing_states:
+                del self.publishing_states[user_id]
+            await self._edit_query_message(query, f"❌ Ошибка при стилизации: {str(e)}")
 
     async def _handle_publish_custom_photo(self, query, draft_id: int) -> None:
         """Перейти в режим ожидания своей картинки."""
@@ -932,7 +950,7 @@ class ModerationBot:
         user_id = query.from_user.id
         
         if user_id not in self.publishing_states:
-            await query.edit_message_text("❌ Ошибка: состояние потеряно.")
+            await self._edit_query_message(query, "❌ Ошибка: состояние потеряно.")
             return
 
         _, selected_channels = self.publishing_states[user_id]
@@ -941,7 +959,7 @@ class ModerationBot:
         # Очищаем состояние
         del self.publishing_states[user_id]
         
-        await query.edit_message_text("✅ Пост опубликован!")
+        await self._edit_query_message(query, "✅ Пост опубликован!")
 
     async def _handle_edit(self, query, draft_id: int, draft: Dict) -> None:
         """Обработать нажатие 'Править'."""
@@ -1339,15 +1357,15 @@ class ModerationBot:
         """Обработать нажатие 'Другая картинка' - показать 3 новые картинки для выбора."""
         draft = self.db.get_draft_post(draft_id)
         if not draft:
-            await query.edit_message_text("❌ Черновик не найден.")
+            await self._edit_query_message(query, "❌ Черновик не найден.")
             return
 
         image_query = draft.get("image_query")
         if not image_query:
-            await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+            await self._edit_query_message(query, "❌ Запрос для поиска картинки не найден.")
             return
 
-        await query.edit_message_text("🔄 Ищу новые картинки...")
+        await self._edit_query_message(query, "🔄 Ищу новые картинки...")
 
         # Используем случайную страницу для получения других картинок
         import random
@@ -1357,7 +1375,7 @@ class ModerationBot:
         # Запрос к Pexels API с случайной страницей
         pexels_images = self._search_pexels_images(image_query, page=random_page)
         if not pexels_images or len(pexels_images) == 0:
-            await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
+            await self._edit_query_message(query, "❌ Не удалось найти картинки. Попробуйте позже.")
             return
 
         # Сохраняем картинки в БД
@@ -1366,8 +1384,8 @@ class ModerationBot:
         self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
 
         # Показываем исходные картинки из Pexels для выбора (без стилизации)
-        await query.edit_message_text(
-            f"📸 Найдено {len(pexels_images)} картинок. Выберите одну:"
+        await self._edit_query_message(
+            query, f"📸 Найдено {len(pexels_images)} картинок. Выберите одну:"
         )
 
         # Отправляем каждую исходную картинку с кнопкой выбора
@@ -1392,7 +1410,7 @@ class ModerationBot:
         """Обработать выбор картинки оператором."""
         draft = self.db.get_draft_post(draft_id)
         if not draft:
-            await query.edit_message_text("❌ Черновик не найден.")
+            await self._edit_query_message(query, "❌ Черновик не найден.")
             return
 
         # Получаем картинки из БД или из Pexels
@@ -1409,7 +1427,7 @@ class ModerationBot:
         if not pexels_images:
             image_query = draft.get("image_query")
             if not image_query:
-                await query.edit_message_text("❌ Запрос для поиска картинки не найден.")
+                await self._edit_query_message(query, "❌ Запрос для поиска картинки не найден.")
                 return
             pexels_images = self._search_pexels_images(image_query)
             if pexels_images:
@@ -1417,16 +1435,16 @@ class ModerationBot:
                 self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
 
         if not pexels_images or image_index >= len(pexels_images):
-            await query.edit_message_text("❌ Картинка не найдена.")
+            await self._edit_query_message(query, "❌ Картинка не найдена.")
             return
 
         # Стилизуем выбранную картинку
-        await query.edit_message_text("🎨 Стилизую картинку...")
+        await self._edit_query_message(query, "🎨 Стилизую картинку...")
         selected_image_url = pexels_images[image_index]["url"]
         final_url = self._render_image(selected_image_url, draft["title"])
 
         if not final_url:
-            await query.edit_message_text("❌ Не удалось стилизовать картинку.")
+            await self._edit_query_message(query, "❌ Не удалось стилизовать картинку.")
             return
 
         # Обновляем final_image_url в БД
@@ -1519,7 +1537,7 @@ class ModerationBot:
             except Exception as e:
                 logger.error("_handle_show_images_for_publish: ошибка при сохранении image_query: %s", e)
 
-        await query.edit_message_text("🔄 Ищу картинки...")
+        await self._edit_query_message(query, "🔄 Ищу картинки...")
 
         # Запрос к Pexels API (используем случайную страницу для разнообразия)
         import random
@@ -1528,7 +1546,7 @@ class ModerationBot:
         
         pexels_images = self._search_pexels_images(image_query, page=random_page)
         if not pexels_images or len(pexels_images) == 0:
-            await query.edit_message_text("❌ Не удалось найти картинки. Попробуйте позже.")
+            await self._edit_query_message(query, "❌ Не удалось найти картинки. Попробуйте позже.")
             return
 
         # Сохраняем картинки в БД
@@ -1537,7 +1555,7 @@ class ModerationBot:
         self.db.update_draft_post(draft_id, pexels_images_json=pexels_images_json)
 
         # Показываем картинки для выбора
-        await query.edit_message_text("📸 Выберите картинку для публикации:")
+        await self._edit_query_message(query, "📸 Выберите картинку для публикации:")
         
         # Отправляем каждую картинку с кнопкой выбора
         for idx, pexels_img in enumerate(pexels_images):
@@ -1627,12 +1645,12 @@ class ModerationBot:
             logger.info("_render_image вернул: %s", final_url)
         except Exception as e:
             logger.error("Ошибка при вызове _render_image: %s", e, exc_info=True)
-            await query.edit_message_text("❌ Ошибка при стилизации картинки.")
+            await self._edit_query_message(query, "❌ Ошибка при стилизации картинки.")
             return
 
         if not final_url:
             logger.error("Не удалось стилизовать картинку: %s, _render_image вернул None", selected_image_url)
-            await query.edit_message_text("❌ Не удалось стилизовать картинку.")
+            await self._edit_query_message(query, "❌ Не удалось стилизовать картинку.")
             return
 
         logger.info("Картинка стилизована: %s", final_url)
