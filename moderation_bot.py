@@ -349,124 +349,149 @@ class ModerationBot:
 
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик callback-запросов от inline-кнопок."""
-        logger.info("=== CALLBACK HANDLER ВЫЗВАН ===")
-        logger.info("update type: %s", type(update))
-        logger.info("update: %s", update)
-        
-        query = update.callback_query
-        if not query:
-            logger.warning("query is None в callback_handler")
-            logger.warning("update.callback_query: %s", update.callback_query)
-            return
-        
-        logger.info("query.data = %s", query.data)
-        logger.info("query.from_user.id = %s", query.from_user.id)
-        logger.info("query.message.message_id = %s", query.message.message_id if query.message else "None")
-        
+        query = None
         try:
-            await query.answer()
-            logger.info("query.answer() выполнен успешно")
-        except Exception as e:
-            logger.error("Ошибка при query.answer(): %s", e, exc_info=True)
-
-        user_id = query.from_user.id
-        logger.info("user_id = %s", user_id)
-
-        if not self._is_moderator(user_id):
-            logger.warning("Пользователь %s не является модератором", user_id)
-            await query.edit_message_text("❌ У вас нет доступа к этому боту.")
-            return
-
-        data = query.data
-        logger.info("Получен callback: user_id=%s, data=%s", user_id, data)
-        parts = data.split(":")
-        action = parts[0]
-        logger.debug("Действие: %s, части: %s", action, parts)
-
-        if action == "approve":
-            draft_id = int(parts[1])
-            draft = self.db.get_draft_post(draft_id)
-            if not draft:
-                await query.edit_message_text("❌ Черновик не найден.")
+            logger.info("=== CALLBACK HANDLER ВЫЗВАН ===")
+            logger.info("update type: %s", type(update))
+            
+            query = update.callback_query
+            if not query:
+                logger.warning("query is None в callback_handler")
+                logger.warning("update.callback_query: %s", update.callback_query)
                 return
-            await self._handle_approve(query, draft_id, draft)
-        elif action == "edit":
-            draft_id = int(parts[1])
-            draft = self.db.get_draft_post(draft_id)
-            if not draft:
-                await query.edit_message_text("❌ Черновик не найден.")
+            
+            logger.info("query.data = %s", query.data)
+            logger.info("query.from_user.id = %s", query.from_user.id)
+            logger.info("query.message.message_id = %s", query.message.message_id if query.message else "None")
+            
+            # Отвечаем на callback сразу, чтобы Telegram показал реакцию
+            try:
+                await query.answer()
+                logger.info("query.answer() выполнен успешно")
+            except Exception as e:
+                logger.error("Ошибка при query.answer(): %s", e, exc_info=True)
+
+            user_id = query.from_user.id
+            logger.info("user_id = %s", user_id)
+
+            if not self._is_moderator(user_id):
+                logger.warning("Пользователь %s не является модератором", user_id)
+                await query.edit_message_text("❌ У вас нет доступа к этому боту.")
                 return
-            await self._handle_edit(query, draft_id, draft)
-        elif action == "reject":
-            draft_id = int(parts[1])
-            await self._handle_reject(query, draft_id)
-        elif action == "select_channel":
-            draft_id = int(parts[1])
-            channel_id = parts[2]
-            await self._handle_channel_selection(query, draft_id, channel_id)
-        elif action == "select_multiple":
-            draft_id = int(parts[1])
-            await self._handle_multiple_channel_selection(query, draft_id)
-        elif action == "toggle_channel":
-            draft_id = int(parts[1])
-            channel_id = parts[2]
-            await self._handle_toggle_channel(query, draft_id, channel_id)
-        elif action == "publish_channels_done":
-            draft_id = int(parts[1])
-            await self._handle_publish_channels_done(query, draft_id)
-        elif action == "publish_no_photo":
-            draft_id = int(parts[1])
-            await self._handle_publish_no_photo(query, draft_id)
-        elif action == "publish_source_photo":
-            draft_id = int(parts[1])
-            await self._handle_publish_source_photo(query, draft_id)
-        elif action == "publish_custom_photo":
-            draft_id = int(parts[1])
-            await self._handle_publish_custom_photo(query, draft_id)
-        elif action == "change_image":
-            draft_id = int(parts[1])
-            await self._handle_change_image(query, draft_id)
-        elif action == "more_images_for_publish":
-            draft_id = int(parts[1])
-            await self._handle_show_images_for_publish(query, draft_id)
-        elif action == "select_image":
-            draft_id = int(parts[1])
-            image_index = int(parts[2])
-            await self._handle_select_image(query, draft_id, image_index)
-        elif action == "select_image_for_publish":
-            # Это может быть либо выбор картинки для публикации (без индекса), либо выбор конкретной картинки (с индексом)
-            if len(parts) == 2:
-                # Просто запрос на показ картинок
+
+            data = query.data
+            logger.info("Получен callback: user_id=%s, data=%s", user_id, data)
+            parts = data.split(":")
+            action = parts[0]
+            logger.info("Обработка действия: %s, части: %s", action, parts)
+
+            # Обработка всех действий с детальным логированием
+            if action == "approve":
                 draft_id = int(parts[1])
+                draft = self.db.get_draft_post(draft_id)
+                if not draft:
+                    await query.edit_message_text("❌ Черновик не найден.")
+                    return
+                logger.info("Вызов _handle_approve для draft_id=%s", draft_id)
+                await self._handle_approve(query, draft_id, draft)
+            elif action == "edit":
+                draft_id = int(parts[1])
+                draft = self.db.get_draft_post(draft_id)
+                if not draft:
+                    await query.edit_message_text("❌ Черновик не найден.")
+                    return
+                logger.info("Вызов _handle_edit для draft_id=%s", draft_id)
+                await self._handle_edit(query, draft_id, draft)
+            elif action == "reject":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_reject для draft_id=%s", draft_id)
+                await self._handle_reject(query, draft_id)
+            elif action == "select_channel":
+                draft_id = int(parts[1])
+                channel_id = parts[2]
+                logger.info("Вызов _handle_channel_selection для draft_id=%s, channel_id=%s", draft_id, channel_id)
+                await self._handle_channel_selection(query, draft_id, channel_id)
+            elif action == "select_multiple":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_multiple_channel_selection для draft_id=%s", draft_id)
+                await self._handle_multiple_channel_selection(query, draft_id)
+            elif action == "toggle_channel":
+                draft_id = int(parts[1])
+                channel_id = parts[2]
+                logger.info("Вызов _handle_toggle_channel для draft_id=%s, channel_id=%s", draft_id, channel_id)
+                await self._handle_toggle_channel(query, draft_id, channel_id)
+            elif action == "publish_channels_done":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_publish_channels_done для draft_id=%s", draft_id)
+                await self._handle_publish_channels_done(query, draft_id)
+            elif action == "publish_no_photo":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_publish_no_photo для draft_id=%s", draft_id)
+                await self._handle_publish_no_photo(query, draft_id)
+            elif action == "publish_source_photo":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_publish_source_photo для draft_id=%s", draft_id)
+                await self._handle_publish_source_photo(query, draft_id)
+            elif action == "publish_custom_photo":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_publish_custom_photo для draft_id=%s", draft_id)
+                await self._handle_publish_custom_photo(query, draft_id)
+            elif action == "change_image":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_change_image для draft_id=%s", draft_id)
+                await self._handle_change_image(query, draft_id)
+            elif action == "more_images_for_publish":
+                draft_id = int(parts[1])
+                logger.info("Вызов _handle_show_images_for_publish для draft_id=%s", draft_id)
                 await self._handle_show_images_for_publish(query, draft_id)
-            elif len(parts) == 3:
-                # Выбор конкретной картинки
+            elif action == "select_image":
                 draft_id = int(parts[1])
                 image_index = int(parts[2])
-                logger.info("Обработка select_image_for_publish: draft_id=%s, image_index=%s", draft_id, image_index)
+                logger.info("Вызов _handle_select_image для draft_id=%s, image_index=%s", draft_id, image_index)
+                await self._handle_select_image(query, draft_id, image_index)
+            elif action == "select_image_for_publish":
+                # Это может быть либо выбор картинки для публикации (без индекса), либо выбор конкретной картинки (с индексом)
+                if len(parts) == 2:
+                    # Просто запрос на показ картинок
+                    draft_id = int(parts[1])
+                    logger.info("Вызов _handle_show_images_for_publish для draft_id=%s (select_image_for_publish)", draft_id)
+                    await self._handle_show_images_for_publish(query, draft_id)
+                elif len(parts) == 3:
+                    # Выбор конкретной картинки
+                    draft_id = int(parts[1])
+                    image_index = int(parts[2])
+                    logger.info("Вызов _handle_select_image_for_publish для draft_id=%s, image_index=%s", draft_id, image_index)
+                    await self._handle_select_image_for_publish(query, draft_id, image_index)
+            elif action == "generate_simpsons":
+                draft_id = int(parts[1])
+                draft = self.db.get_draft_post(draft_id)
+                if not draft:
+                    await query.edit_message_text("❌ Черновик не найден.")
+                    return
+                logger.info("Вызов _handle_generate_simpsons для draft_id=%s", draft_id)
+                await self._handle_generate_simpsons(query, draft_id, draft)
+            elif action == "sel_img_pub":
+                # Старый формат для обратной совместимости
+                draft_id = int(parts[1])
+                image_index = int(parts[2])
+                logger.info("Вызов _handle_select_image_for_publish для draft_id=%s, image_index=%s (sel_img_pub)", draft_id, image_index)
                 await self._handle_select_image_for_publish(query, draft_id, image_index)
-        elif action == "generate_simpsons":
-            draft_id = int(parts[1])
-            draft = self.db.get_draft_post(draft_id)
-            if not draft:
-                await query.edit_message_text("❌ Черновик не найден.")
-                return
-            await self._handle_generate_simpsons(query, draft_id, draft)
-        elif action == "sel_img_pub":
-            # Старый формат для обратной совместимости
-            draft_id = int(parts[1])
-            image_index = int(parts[2])
-            logger.info("Обработка sel_img_pub: draft_id=%s, image_index=%s", draft_id, image_index)
-            await self._handle_select_image_for_publish(query, draft_id, image_index)
-        elif action == "select_image":
-            draft_id = int(parts[1])
-            image_index = int(parts[2])
-            logger.info("Обработка select_image: draft_id=%s, image_index=%s", draft_id, image_index)
-            await self._handle_select_image(query, draft_id, image_index)
-        else:
-            logger.warning("Неизвестное действие в callback: %s, data=%s", action, data)
-            await query.edit_message_text(f"❌ Неизвестное действие: {action}")
-            await query.answer(f"Неизвестное действие: {action}")
+            else:
+                logger.warning("Неизвестное действие в callback: %s, data=%s", action, data)
+                if query:
+                    try:
+                        await query.edit_message_text(f"❌ Неизвестное действие: {action}")
+                        await query.answer(f"Неизвестное действие: {action}")
+                    except:
+                        pass
+        except Exception as e:
+            logger.error("КРИТИЧЕСКАЯ ОШИБКА в callback_handler: %s", e, exc_info=True)
+            if query:
+                try:
+                    await query.answer("❌ Произошла ошибка при обработке запроса", show_alert=True)
+                    await query.edit_message_text(f"❌ Произошла ошибка: {str(e)}")
+                except Exception as e2:
+                    logger.error("Не удалось отправить сообщение об ошибке: %s", e2, exc_info=True)
 
     async def _handle_approve(
         self, query, draft_id: int, draft: Dict
