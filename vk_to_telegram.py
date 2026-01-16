@@ -132,7 +132,29 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     data = resp.json()
 
     if "error" in data:
-        raise RuntimeError(f"VK API error: {data['error']}")
+        error = data["error"]
+        error_code = error.get("error_code", "?")
+        error_msg = error.get("error_msg", "Unknown error")
+        
+        # Специальная обработка ошибки 15 (Access denied)
+        if error_code == 15:
+            logging.error(
+                "VK API ошибка 15: Access denied. "
+                "Возможные причины:\n"
+                "  1. Группа стала приватной/закрытой\n"
+                "  2. Токен не имеет прав администратора группы\n"
+                "  3. Токен истек или недействителен\n"
+                "Решение: Получите новый токен с правами администратора группы.\n"
+                "См. README_VK_TOKEN.md для инструкций."
+            )
+        else:
+            logging.error(
+                "VK API ошибка %s: %s. "
+                "Полная информация: %s",
+                error_code, error_msg, error
+            )
+        
+        raise RuntimeError(f"VK API error: {error}")
 
     items = data.get("response", {}).get("items", [])
     logging.info("Получено %s пост(ов) из VK.", len(items))
