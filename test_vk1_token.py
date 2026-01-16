@@ -5,8 +5,9 @@
 
 import requests
 
-# Новый токен формата vk1.a.
-NEW_TOKEN = "vk1.a.zKf_R2h2HH3Rs04wRYzCMmsNr1rUbf8k9QYWMxwFcEl4ScUVSO5gTmpJDIwYJUWVa109xC4Y6l19504-IPgZ87AJeeUlqwCft-k"
+# Новый токен формата vk1.a. - ВСТАВЬТЕ ПОЛНЫЙ ТОКЕН ИЗ URL
+# Токен должен начинаться с vk1.a. и быть полным (не обрезанным)
+NEW_TOKEN = "vk1.a.ВСТАВЬТЕ_ПОЛНЫЙ_ТОКЕН_ЗДЕСЬ"
 
 VK_GROUP_ID = 212808533
 VK_API_VERSION = "5.199"
