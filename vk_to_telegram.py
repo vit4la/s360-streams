@@ -140,15 +140,13 @@ def get_vk_posts() -> List[Dict[str, Any]]:
         if error_code == 15:
             logging.error(
                 "VK API ошибка 15: Access denied. "
-                "Возможные причины:\n"
-                "  1. Группа стала приватной/закрытой (проверьте https://vk.com/tennisprimesport)\n"
-                "  2. Токен истек или недействителен\n"
-                "  3. Токен не имеет прав 'wall' для чтения стены\n"
+                "Группа стала закрытой/приватной.\n"
+                "Для закрытых групп нужен токен пользователя, который является участником группы.\n"
                 "Решение:\n"
-                "  - Если группа стала приватной - это проблема группы, не токена\n"
-                "  - Если группа публичная - получите новый токен через OAuth с правами wall,groups\n"
-                "  - URL для получения токена: https://oauth.vk.com/authorize?client_id=1&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=wall,groups&response_type=token&v=5.199\n"
-                "См. get_vk_token_simple.md для инструкций."
+                "  1. Войдите в VK под аккаунтом, который является участником группы tennisprimesport\n"
+                "  2. Получите токен через OAuth с правами wall,groups\n"
+                "  3. Обновите токен на сервере в .env файле\n"
+                "См. fix_closed_group.md для подробных инструкций."
             )
         else:
             logging.error(
