@@ -184,8 +184,9 @@ def get_vk_posts() -> List[Dict[str, Any]]:
                 "Полная информация: %s",
                 error_code, error_msg, error
             )
-        
-        raise RuntimeError(f"VK API error: {error}")
+            # Для других ошибок также возвращаем пустой список вместо падения
+            logging.warning("Возвращаю пустой список постов из-за ошибки API. Сервис продолжит работу.")
+            return []
 
     items = data.get("response", {}).get("items", [])
     logging.info("Получено %s пост(ов) из VK.", len(items))
