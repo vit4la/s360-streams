@@ -207,11 +207,21 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
         try:
             driver.get(VK_GROUP_URL)
         except Exception as e:
-            logging.warning(f"Таймаут при загрузке страницы, но продолжаю: {e}")
+            # Если таймаут, но страница частично загрузилась, продолжаем
+            if "timeout" in str(e).lower():
+                logging.warning("Таймаут при загрузке страницы, но продолжаю парсинг...")
+                # Пробуем получить текущий URL - может быть, страница все же загрузилась
+                try:
+                    current_url = driver.current_url
+                    logging.info(f"Текущий URL: {current_url}")
+                except:
+                    pass
+            else:
+                raise
         
         # Ждем загрузки постов (VK может загружать их через AJAX)
         logging.info("Жду загрузки постов...")
-        time.sleep(8)  # Уменьшил время ожидания
+        time.sleep(8)
         
         # Пробуем найти посты в DOM
         posts = []
