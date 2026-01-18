@@ -42,16 +42,23 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
         )
         return []
     
-    # Настройка Chrome в headless режиме
+    # Настройка Chrome для обхода защиты VK
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    # НЕ используем headless - VK может блокировать headless браузеры
+    # chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
+    
+    # Убираем признаки автоматизации
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     
     # Загружаем cookies если есть
     cookies_file = Path("vk_cookies.txt")
@@ -70,31 +77,66 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
     driver = None
     try:
         # Запускаем браузер
+        logging.info("Запускаю Chrome...")
         driver = webdriver.Chrome(options=chrome_options)
-        driver.implicitly_wait(10)
+        
+        # Убираем признаки автоматизации через JavaScript
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            '''
+        })
+        
+        # Увеличиваем таймауты
+        driver.implicitly_wait(15)
+        driver.set_page_load_timeout(60)  # 60 секунд на загрузку страницы
         
         # Если есть cookies, добавляем их
         if cookies:
+            logging.info("Добавляю cookies...")
             driver.get("https://vk.com/")
+            time.sleep(2)  # Ждем загрузки страницы
             for name, value in cookies.items():
-                driver.add_cookie({"name": name, "value": value, "domain": ".vk.com"})
+                try:
+                    driver.add_cookie({
+                        "name": name, 
+                        "value": value, 
+                        "domain": ".vk.com",
+                        "path": "/"
+                    })
+                except Exception as e:
+                    logging.debug(f"Не удалось добавить cookie {name}: {e}")
+            logging.info("Cookies добавлены")
         
         # Переходим на страницу группы
         logging.info("Загружаю страницу группы...")
         driver.get(VK_GROUP_URL)
         
-        # Ждем загрузки постов
-        time.sleep(5)
+        # Ждем загрузки постов (VK может загружать их через AJAX)
+        logging.info("Жду загрузки постов...")
+        time.sleep(10)  # Увеличил время ожидания
         
         # Пробуем найти посты в DOM
         posts = []
         
-        # Ищем посты по разным селекторам
+        # Прокручиваем страницу вниз, чтобы загрузить больше постов
+        logging.info("Прокручиваю страницу для загрузки постов...")
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        driver.execute_script("window.scrollTo(0, 0);")  # Возвращаемся наверх
+        time.sleep(2)
+        
+        # Ищем посты по разным селекторам (VK использует разные классы)
         post_selectors = [
-            "div[data-post-id]",
-            ".wall_item",
-            ".post",
-            "[id*='post']"
+            "div[data-post-id]",  # Основной селектор
+            "div.wall_item",
+            "div.post",
+            "div[id*='post']",
+            "div[class*='wall_item']",
+            "div[class*='post']",
+            "a[href*='wall-']"  # Ссылки на посты
         ]
         
         post_elements = []
@@ -103,10 +145,20 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
                 elements = driver.find_elements(By.CSS_SELECTOR, selector)
                 if elements:
                     post_elements = elements
-                    logging.info(f"Найдено {len(elements)} постов через селектор {selector}")
+                    logging.info(f"✅ Найдено {len(elements)} элементов через селектор: {selector}")
                     break
-            except Exception:
+            except Exception as e:
+                logging.debug(f"Селектор {selector} не сработал: {e}")
                 continue
+        
+        if not post_elements:
+            # Пробуем найти любые ссылки на посты
+            logging.info("Пробую найти посты через ссылки...")
+            all_links = driver.find_elements(By.TAG_NAME, "a")
+            post_links = [link for link in all_links if "wall-" in link.get_attribute("href") or ""]
+            if post_links:
+                post_elements = post_links[:POSTS_LIMIT]
+                logging.info(f"✅ Найдено {len(post_elements)} постов через ссылки")
         
         # Извлекаем данные из постов
         for elem in post_elements[:POSTS_LIMIT]:
