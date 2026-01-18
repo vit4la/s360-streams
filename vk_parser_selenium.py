@@ -16,16 +16,37 @@ VK_GROUP_ID = 212808533
 VK_GROUP_URL = "https://vk.com/tennisprimesport"
 POSTS_LIMIT = 20
 
+# Файл с учетными данными (логин и пароль)
+CREDENTIALS_FILE = Path("vk_credentials.txt")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
 
+def load_credentials() -> Optional[Dict[str, str]]:
+    """Загрузить логин и пароль из файла."""
+    if CREDENTIALS_FILE.exists():
+        try:
+            with open(CREDENTIALS_FILE, "r", encoding="utf-8") as f:
+                credentials = {}
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        key, value = line.split("=", 1)
+                        credentials[key.strip()] = value.strip()
+                return credentials if "login" in credentials and "password" in credentials else None
+        except Exception as e:
+            logging.error("Ошибка при загрузке учетных данных: %s", e)
+    return None
+
+
 def get_vk_posts_selenium() -> List[Dict[str, Any]]:
     """
     Получить посты через Selenium (автоматизация браузера).
     Требует установки selenium и драйвера браузера.
+    Поддерживает авторизацию через логин/пароль или cookies.
     """
     try:
         from selenium import webdriver
@@ -34,6 +55,7 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
+        from selenium.webdriver.common.keys import Keys
     except ImportError:
         logging.error(
             "Selenium не установлен! Установите:\n"
@@ -74,6 +96,9 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
         except Exception as e:
             logging.warning("Не удалось загрузить cookies: %s", e)
     
+    # Загружаем учетные данные (логин/пароль)
+    credentials = load_credentials()
+    
     driver = None
     try:
         # Запускаем браузер
@@ -91,13 +116,78 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
         
         # Увеличиваем таймауты
         driver.implicitly_wait(15)
-        driver.set_page_load_timeout(60)  # 60 секунд на загрузку страницы
+        driver.set_page_load_timeout(90)  # 90 секунд на загрузку страницы
         
-        # Если есть cookies, добавляем их
-        if cookies:
+        # Авторизация: сначала пробуем через логин/пароль, потом через cookies
+        if credentials:
+            logging.info("Авторизуюсь через логин/пароль...")
+            try:
+                driver.get("https://vk.com/")
+                time.sleep(3)
+                
+                # Ищем поле ввода телефона/email
+                try:
+                    phone_input = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='login'], input[type='text'], input[placeholder*='телефон'], input[placeholder*='email']"))
+                    )
+                    phone_input.clear()
+                    phone_input.send_keys(credentials["login"])
+                    logging.info("Логин введен")
+                except Exception as e:
+                    logging.warning(f"Не удалось найти поле логина: {e}")
+                
+                # Ищем поле ввода пароля
+                try:
+                    password_input = driver.find_element(By.CSS_SELECTOR, "input[name='password'], input[type='password']")
+                    password_input.clear()
+                    password_input.send_keys(credentials["password"])
+                    logging.info("Пароль введен")
+                except Exception as e:
+                    logging.warning(f"Не удалось найти поле пароля: {e}")
+                
+                # Ищем кнопку входа
+                try:
+                    login_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], .login_button, button:contains('Войти')")
+                    login_button.click()
+                    logging.info("Кнопка входа нажата")
+                except Exception as e:
+                    # Пробуем нажать Enter
+                    try:
+                        password_input.send_keys(Keys.RETURN)
+                        logging.info("Нажата клавиша Enter")
+                    except:
+                        logging.warning(f"Не удалось нажать кнопку входа: {e}")
+                
+                # Ждем авторизации (проверяем, что мы не на странице входа)
+                time.sleep(5)
+                if "login" not in driver.current_url.lower() and "oauth" not in driver.current_url.lower():
+                    logging.info("✅ Авторизация через логин/пароль успешна")
+                else:
+                    logging.warning("Возможно, требуется двухфакторная аутентификация или капча")
+                    # Продолжаем - может быть, авторизация прошла, но есть редирект
+            except Exception as e:
+                logging.error(f"Ошибка при авторизации через логин/пароль: {e}")
+                # Пробуем через cookies
+                if cookies:
+                    logging.info("Пробую авторизацию через cookies...")
+                    driver.get("https://vk.com/")
+                    time.sleep(2)
+                    for name, value in cookies.items():
+                        try:
+                            driver.add_cookie({
+                                "name": name, 
+                                "value": value, 
+                                "domain": ".vk.com",
+                                "path": "/"
+                            })
+                        except Exception as e:
+                            logging.debug(f"Не удалось добавить cookie {name}: {e}")
+                    logging.info("Cookies добавлены")
+        elif cookies:
+            # Если нет логина/пароля, используем cookies
             logging.info("Добавляю cookies...")
             driver.get("https://vk.com/")
-            time.sleep(2)  # Ждем загрузки страницы
+            time.sleep(2)
             for name, value in cookies.items():
                 try:
                     driver.add_cookie({
@@ -109,14 +199,19 @@ def get_vk_posts_selenium() -> List[Dict[str, Any]]:
                 except Exception as e:
                     logging.debug(f"Не удалось добавить cookie {name}: {e}")
             logging.info("Cookies добавлены")
+        else:
+            logging.warning("Нет ни логина/пароля, ни cookies. Пробую без авторизации...")
         
         # Переходим на страницу группы
         logging.info("Загружаю страницу группы...")
-        driver.get(VK_GROUP_URL)
+        try:
+            driver.get(VK_GROUP_URL)
+        except Exception as e:
+            logging.warning(f"Таймаут при загрузке страницы, но продолжаю: {e}")
         
         # Ждем загрузки постов (VK может загружать их через AJAX)
         logging.info("Жду загрузки постов...")
-        time.sleep(10)  # Увеличил время ожидания
+        time.sleep(8)  # Уменьшил время ожидания
         
         # Пробуем найти посты в DOM
         posts = []
