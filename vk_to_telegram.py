@@ -175,7 +175,9 @@ def get_vk_posts() -> List[Dict[str, Any]]:
                 "  2. Cookies от авторизованной сессии (см. setup_vk_cookies.md)\n"
                 "См. fix_closed_group.md для подробных инструкций."
             )
-            raise RuntimeError(f"VK API error: {error}")
+            # Возвращаем пустой список вместо падения, чтобы сервис продолжал работать
+            logging.warning("Возвращаю пустой список постов. Сервис продолжит работу.")
+            return []
         else:
             logging.error(
                 "VK API ошибка %s: %s. "
