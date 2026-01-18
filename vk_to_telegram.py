@@ -118,31 +118,23 @@ def save_state(state: Dict[str, Any]) -> None:
 
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
-    # Пробуем Selenium (самый надежный способ)
-    try:
-        from vk_parser_selenium import get_vk_posts_selenium
-        posts = get_vk_posts_selenium()
-        if posts:
-            logging.info("✅ Успешно получены посты через Selenium.")
-            return posts
-    except ImportError:
-        logging.debug("Selenium не установлен, пробую простой парсинг...")
-    except Exception as e:
-        logging.warning("Selenium не сработал: %s", e)
+    # Используем простой парсинг с cookies (надежнее чем Selenium на сервере)
+    logging.info("Использую парсинг с cookies (мобильная версия VK)")
     
-    # Fallback: простой парсинг с cookies
     try:
         from vk_parser_with_auth import get_vk_posts_with_auth
         posts = get_vk_posts_with_auth()
         if posts:
             logging.info("✅ Успешно получены посты через парсинг с авторизацией.")
             return posts
-    except ImportError:
-        pass
+        else:
+            logging.warning("Парсинг не вернул посты. Проверьте cookies в vk_cookies.txt")
+    except ImportError as e:
+        logging.error("Модуль vk_parser_with_auth не найден: %s", e)
     except Exception as e:
-        logging.debug("Парсинг с авторизацией не сработал: %s", e)
+        logging.error("Парсинг с авторизацией не сработал: %s", e, exc_info=True)
     
-    # Последний вариант: RSS (только для публичных групп)
+    # Fallback: RSS (только для публичных групп)
     try:
         posts = get_vk_posts_scraping()
         if posts:
@@ -151,7 +143,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("RSS не сработал: %s", e)
     
-    logging.warning("Не удалось получить посты. Установите Selenium для надежной работы.")
+    logging.warning("Не удалось получить посты. Проверьте cookies в vk_cookies.txt")
     return []
 
 

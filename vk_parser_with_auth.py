@@ -95,18 +95,81 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
         # Используем мобильную версию VK - она проще для парсинга
         logging.info("Пробую мобильную версию VK...")
         mobile_url = f"https://m.vk.com/tennisprimesport"
-        mobile_resp = session.get(mobile_url, timeout=15)
+        mobile_resp = session.get(mobile_url, timeout=20)
         
         posts = []
         
-        # Пробуем найти данные в мобильной версии
+        # Пробуем найти данные в мобильной версии через HTML парсинг
         if mobile_resp.status_code == 200:
-            # Ищем JSON данные в скриптах
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(mobile_resp.text, "html.parser")
+            
+            # В мобильной версии посты обычно в div с классом wall_item или в ссылках
+            # Ищем все ссылки на посты
+            post_links = soup.find_all("a", href=re.compile(r'wall-?\d+_\d+'))
+            
+            seen_ids = set()
+            for link in post_links[:POSTS_LIMIT * 2]:  # Берем больше, так как могут быть дубли
+                try:
+                    href = link.get("href", "")
+                    # Извлекаем post_id из ссылки вида wall-212808533_12345 или /wall-212808533_12345
+                    post_id_match = re.search(r'wall-?\d+_(\d+)', href)
+                    if post_id_match:
+                        post_id = int(post_id_match.group(1))
+                        if post_id in seen_ids:
+                            continue
+                        seen_ids.add(post_id)
+                        
+                        # Ищем родительский элемент поста
+                        post_elem = link
+                        for _ in range(5):  # Поднимаемся на 5 уровней вверх
+                            post_elem = post_elem.parent
+                            if post_elem and post_elem.name == "div":
+                                break
+                        
+                        # Извлекаем текст поста
+                        text = ""
+                        if post_elem:
+                            # Ищем текст в разных местах
+                            text_elem = post_elem.find("div", class_=re.compile(r"text|content", re.I))
+                            if not text_elem:
+                                # Пробуем найти все текстовые элементы
+                                text_parts = []
+                                for p in post_elem.find_all(["div", "p", "span"]):
+                                    txt = p.get_text(strip=True)
+                                    if txt and len(txt) > 10:  # Игнорируем короткие тексты
+                                        text_parts.append(txt)
+                                text = " ".join(text_parts[:3])  # Берем первые 3 части
+                            else:
+                                text = text_elem.get_text(strip=True)
+                        
+                        # Ищем видео
+                        attachments = []
+                        video_link = post_elem.find("a", href=re.compile(r"video")) if post_elem else None
+                        if video_link:
+                            attachments.append({"type": "video"})
+                        
+                        posts.append({
+                            "id": post_id,
+                            "text": text,
+                            "attachments": attachments
+                        })
+                        
+                        if len(posts) >= POSTS_LIMIT:
+                            break
+                except Exception as e:
+                    logging.debug("Ошибка при парсинге поста: %s", e)
+                    continue
+            
+            if posts:
+                logging.info(f"✅ Найдено {len(posts)} постов в мобильной версии через HTML парсинг")
+        
+        # Если не нашли через HTML, пробуем найти JSON в скриптах
+        if not posts and mobile_resp.status_code == 200:
             script_patterns = [
                 re.compile(r'var\s+wall\s*=\s*(\{.*?\});', re.DOTALL),
                 re.compile(r'window\.wall\s*=\s*(\{.*?\});', re.DOTALL),
                 re.compile(r'"wall":\s*(\{.*?"items":\s*\[.*?\]\})', re.DOTALL),
-                re.compile(r'wall\.items\s*=\s*(\[.*?\]);', re.DOTALL),
             ]
             
             for pattern in script_patterns:
@@ -118,50 +181,9 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
                             posts = data["items"][:POSTS_LIMIT]
                             logging.info("✅ Найдены посты в JSON данных мобильной версии")
                             break
-                        elif isinstance(data, list):
-                            posts = data[:POSTS_LIMIT]
-                            logging.info("✅ Найдены посты в массиве мобильной версии")
-                            break
                     except (json.JSONDecodeError, KeyError, TypeError) as e:
                         logging.debug("Ошибка при парсинге JSON: %s", e)
                         continue
-        
-        # Если не нашли в мобильной версии, пробуем парсить HTML мобильной версии
-        if not posts:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(mobile_resp.text, "html.parser")
-            
-            # В мобильной версии посты могут быть в div с классом wall_item
-            post_divs = soup.find_all("div", class_=re.compile(r"wall_item|post", re.I))
-            
-            for div in post_divs[:POSTS_LIMIT]:
-                try:
-                    # Ищем ссылку на пост для получения ID
-                    post_link = div.find("a", href=re.compile(r"wall"))
-                    if post_link:
-                        href = post_link.get("href", "")
-                        post_id_match = re.search(r'wall-?\d+_(\d+)', href)
-                        if post_id_match:
-                            post_id = int(post_id_match.group(1))
-                            
-                            # Извлекаем текст
-                            text_elem = div.find("div", class_=re.compile(r"wall_post_text|post_text", re.I))
-                            text = text_elem.get_text(strip=True) if text_elem else ""
-                            
-                            # Ищем видео
-                            video_link = div.find("a", href=re.compile(r"video"))
-                            attachments = []
-                            if video_link:
-                                attachments.append({"type": "video"})
-                            
-                            posts.append({
-                                "id": post_id,
-                                "text": text,
-                                "attachments": attachments
-                            })
-                except Exception as e:
-                    logging.debug("Ошибка при парсинге HTML поста: %s", e)
-                    continue
         
         # Если все еще не нашли, пробуем парсить HTML напрямую
         if not posts:
