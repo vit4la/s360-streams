@@ -74,45 +74,78 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
     session.headers.update(headers)
     
     try:
+        # Сначала проверяем авторизацию на главной странице
+        main_resp = session.get("https://vk.com/feed", timeout=15)
+        if "login" in main_resp.url.lower() or "Вход" in main_resp.text or "id=" not in main_resp.text:
+            logging.error("Не удалось авторизоваться. Проверьте cookies в vk_cookies.txt")
+            logging.error("Cookies должны быть от аккаунта, который является участником группы tennisprimesport")
+            return []
+        
+        logging.info("Авторизация успешна, загружаю страницу группы...")
+        
         # Загружаем страницу группы
         resp = session.get(VK_GROUP_URL, timeout=15)
         resp.raise_for_status()
         
-        # Проверяем, авторизованы ли мы
+        # Проверяем, что мы на странице группы (не редирект на логин)
         if "login" in resp.url.lower() or "Вход" in resp.text:
-            logging.error("Не удалось авторизоваться. Проверьте cookies.")
+            logging.error("Не удалось получить доступ к группе. Возможно, вы не участник группы.")
             return []
         
-        # Ищем данные постов в JavaScript коде страницы
-        # VK хранит данные в window.__initialData__ или в скриптах
+        # VK загружает посты через JavaScript, поэтому нужно использовать API напрямую
+        # Но с cookies мы можем попробовать использовать мобильную версию или API
+        # Попробуем использовать мобильную версию API VK
+        
         posts = []
         
-        # Ищем JSON данные в скриптах
-        script_pattern = re.compile(r'window\.__initialData__\s*=\s*({.*?});', re.DOTALL)
-        match = script_pattern.search(resp.text)
-        
-        if match:
-            try:
-                data = json.loads(match.group(1))
-                # Извлекаем посты из структуры данных VK
-                # Структура может быть разной, нужно адаптировать
-                if "wall" in data:
-                    items = data["wall"].get("items", [])
-                    posts = items[:POSTS_LIMIT]
-            except Exception as e:
-                logging.debug("Ошибка при парсинге JSON данных: %s", e)
-        
-        # Если не нашли через __initialData__, ищем в других местах
-        if not posts:
-            # Ищем в скриптах с данными
-            script_pattern2 = re.compile(r'"wall":\s*({.*?"items":\s*\[.*?\]})', re.DOTALL)
-            match2 = script_pattern2.search(resp.text)
-            if match2:
+        # Пробуем получить посты через мобильный API VK (работает с cookies)
+        try:
+            # Используем мобильный API endpoint
+            api_url = "https://m.vk.com/api/wall.get"
+            api_params = {
+                "owner_id": f"-{VK_GROUP_ID}",
+                "count": POSTS_LIMIT,
+                "v": "5.199"
+            }
+            
+            api_resp = session.get(api_url, params=api_params, timeout=15)
+            if api_resp.status_code == 200:
                 try:
-                    wall_data = json.loads(match2.group(1))
-                    posts = wall_data.get("items", [])[:POSTS_LIMIT]
-                except:
-                    pass
+                    api_data = api_resp.json()
+                    if "response" in api_data and "items" in api_data["response"]:
+                        items = api_data["response"]["items"]
+                        posts = items[:POSTS_LIMIT]
+                        logging.info("✅ Получены посты через мобильный API VK")
+                except json.JSONDecodeError:
+                    logging.debug("Мобильный API не вернул JSON")
+        except Exception as e:
+            logging.debug("Мобильный API не сработал: %s", e)
+        
+        # Если мобильный API не сработал, пробуем парсить HTML/JS
+        if not posts:
+            # Ищем JSON данные в скриптах страницы
+            # VK может хранить данные в разных местах
+            script_patterns = [
+                re.compile(r'window\.__initialData__\s*=\s*({.*?});', re.DOTALL),
+                re.compile(r'"wall":\s*({.*?"items":\s*\[.*?\]})', re.DOTALL),
+                re.compile(r'var\s+wall\s*=\s*({.*?});', re.DOTALL),
+            ]
+            
+            for pattern in script_patterns:
+                match = pattern.search(resp.text)
+                if match:
+                    try:
+                        data = json.loads(match.group(1))
+                        # Пробуем разные пути к данным
+                        if "wall" in data and "items" in data["wall"]:
+                            posts = data["wall"]["items"][:POSTS_LIMIT]
+                            break
+                        elif "items" in data:
+                            posts = data["items"][:POSTS_LIMIT]
+                            break
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logging.debug("Ошибка при парсинге JSON: %s", e)
+                        continue
         
         # Если все еще не нашли, пробуем парсить HTML напрямую
         if not posts:
