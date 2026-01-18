@@ -74,23 +74,42 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
     session.headers.update(headers)
     
     try:
-        # Сначала проверяем авторизацию на главной странице
-        main_resp = session.get("https://vk.com/feed", timeout=15)
-        if "login" in main_resp.url.lower() or "Вход" in main_resp.text or "id=" not in main_resp.text:
-            logging.error("Не удалось авторизоваться. Проверьте cookies в vk_cookies.txt")
-            logging.error("Cookies должны быть от аккаунта, который является участником группы tennisprimesport")
+        # Проверяем авторизацию - пробуем загрузить главную страницу
+        logging.info("Проверяю авторизацию...")
+        main_resp = session.get("https://vk.com/feed", timeout=20, allow_redirects=True)
+        
+        # Проверяем, не редиректнуло ли на страницу входа
+        if "login" in main_resp.url.lower() or "oauth" in main_resp.url.lower():
+            logging.error("❌ Не удалось авторизоваться - редирект на страницу входа")
+            logging.error("Проверьте cookies в vk_cookies.txt - они должны быть актуальными")
             return []
         
-        logging.info("Авторизация успешна, загружаю страницу группы...")
+        # Проверяем наличие признаков авторизованной страницы
+        auth_indicators = ["id=", "user_id", "profile", "feed", "новости"]
+        is_authorized = any(indicator in main_resp.text.lower() for indicator in auth_indicators)
         
-        # Загружаем страницу группы
-        resp = session.get(VK_GROUP_URL, timeout=15)
-        resp.raise_for_status()
+        if not is_authorized:
+            logging.warning("Не уверен в авторизации, но продолжаю...")
+        else:
+            logging.info("✅ Авторизация успешна")
+        
+        # Загружаем страницу группы (мобильная версия)
+        logging.info("Загружаю мобильную версию группы...")
+        mobile_url = f"https://m.vk.com/tennisprimesport"
+        mobile_resp = session.get(mobile_url, timeout=20, allow_redirects=True)
         
         # Проверяем, что мы на странице группы (не редирект на логин)
-        if "login" in resp.url.lower() or "Вход" in resp.text:
-            logging.error("Не удалось получить доступ к группе. Возможно, вы не участник группы.")
+        if "login" in mobile_resp.url.lower() or "oauth" in mobile_resp.url.lower():
+            logging.error("❌ Не удалось получить доступ к группе - редирект на страницу входа")
+            logging.error("Возможно, вы не участник группы tennisprimesport")
+            logging.error("Или cookies истекли - обновите их в vk_cookies.txt")
             return []
+        
+        # Проверяем, что мы на правильной странице
+        if "tennisprimesport" not in mobile_resp.url.lower() and "wall" not in mobile_resp.text.lower():
+            logging.warning("Странная страница получена, но продолжаю парсинг...")
+        
+        logging.info("✅ Страница группы загружена, начинаю парсинг...")
         
         # Используем мобильную версию VK - она проще для парсинга
         logging.info("Пробую мобильную версию VK...")
