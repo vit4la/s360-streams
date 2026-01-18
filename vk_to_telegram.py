@@ -137,11 +137,12 @@ def get_vk_posts() -> List[Dict[str, Any]]:
         error_code = error.get("error_code", "?")
         error_msg = error.get("error_msg", "Unknown error")
         
-        # Специальная обработка ошибки 15 (Access denied)
-        if error_code == 15:
+        # Пробуем парсинг с cookies при ошибках 5 (токен недействителен) или 15 (доступ запрещен)
+        if error_code in [5, 15]:
             logging.warning(
-                "VK API ошибка 15: Access denied. "
-                "Пробую использовать парсинг с авторизацией как fallback..."
+                "VK API ошибка %s: %s. "
+                "Пробую использовать парсинг с авторизацией как fallback...",
+                error_code, error_msg
             )
             # Пробуем использовать парсинг с авторизацией как fallback
             try:
@@ -149,10 +150,10 @@ def get_vk_posts() -> List[Dict[str, Any]]:
                 from vk_parser_with_auth import get_vk_posts_with_auth
                 posts = get_vk_posts_with_auth()
                 if posts:
-                    logging.info("Успешно получены посты через парсинг с авторизацией.")
+                    logging.info("✅ Успешно получены посты через парсинг с авторизацией.")
                     return posts
                 else:
-                    logging.warning("Парсинг с авторизацией не вернул посты. Проверьте cookies.")
+                    logging.warning("Парсинг с авторизацией не вернул посты. Проверьте cookies в vk_cookies.txt")
             except ImportError:
                 logging.warning("Модуль vk_parser_with_auth не найден. Пробую RSS...")
             except Exception as e:
@@ -160,7 +161,10 @@ def get_vk_posts() -> List[Dict[str, Any]]:
             
             # Пробуем RSS как последний вариант
             try:
-                return get_vk_posts_scraping()
+                posts = get_vk_posts_scraping()
+                if posts:
+                    logging.info("✅ Успешно получены посты через RSS.")
+                    return posts
             except Exception as e:
                 logging.error("RSS также не сработал: %s", e)
             
@@ -168,7 +172,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
                 "Все методы получения постов не сработали.\n"
                 "Для закрытых групп нужен:\n"
                 "  1. Токен пользователя-участника (через OAuth), ИЛИ\n"
-                "  2. Cookies от авторизованной сессии (см. vk_parser_with_auth.py)\n"
+                "  2. Cookies от авторизованной сессии (см. setup_vk_cookies.md)\n"
                 "См. fix_closed_group.md для подробных инструкций."
             )
             raise RuntimeError(f"VK API error: {error}")
