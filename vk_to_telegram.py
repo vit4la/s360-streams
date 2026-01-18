@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -138,16 +139,21 @@ def get_vk_posts() -> List[Dict[str, Any]]:
         
         # Специальная обработка ошибки 15 (Access denied)
         if error_code == 15:
-            logging.error(
+            logging.warning(
                 "VK API ошибка 15: Access denied. "
-                "Группа стала закрытой/приватной.\n"
-                "Для закрытых групп нужен токен пользователя, который является участником группы.\n"
-                "Решение:\n"
-                "  1. Войдите в VK под аккаунтом, который является участником группы tennisprimesport\n"
-                "  2. Получите токен через OAuth с правами wall,groups\n"
-                "  3. Обновите токен на сервере в .env файле\n"
-                "См. fix_closed_group.md для подробных инструкций."
+                "Пробую использовать веб-скрапинг как fallback..."
             )
+            # Пробуем использовать веб-скрапинг как fallback
+            try:
+                return get_vk_posts_scraping()
+            except Exception as e:
+                logging.error("Веб-скрапинг также не сработал: %s", e)
+                logging.error(
+                    "Группа стала закрытой/приватной.\n"
+                    "Для закрытых групп нужен токен пользователя, который является участником группы.\n"
+                    "См. fix_closed_group.md для подробных инструкций."
+                )
+                raise RuntimeError(f"VK API error: {error}")
         else:
             logging.error(
                 "VK API ошибка %s: %s. "
@@ -160,6 +166,67 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     items = data.get("response", {}).get("items", [])
     logging.info("Получено %s пост(ов) из VK.", len(items))
     return items
+
+
+def get_vk_posts_scraping() -> List[Dict[str, Any]]:
+    """
+    Fallback: получить посты через RSS фид VK (без API).
+    VK предоставляет RSS фиды для публичных групп.
+    """
+    try:
+        # Пробуем RSS фид VK (работает для публичных групп)
+        rss_url = f"https://vk.com/rss.php?domain=tennisprimesport"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        
+        resp = requests.get(rss_url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        
+        # Парсим RSS XML
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(resp.text)
+        
+        posts = []
+        # RSS формат: channel -> item
+        items = root.findall(".//item")
+        
+        for item in items[:POSTS_LIMIT]:
+            try:
+                # Извлекаем данные из RSS
+                title = item.find("title")
+                description = item.find("description")
+                link = item.find("link")
+                
+                if link is not None and link.text:
+                    # Извлекаем post_id из ссылки вида https://vk.com/tennisprimesport?w=wall-212808533_12345
+                    link_text = link.text
+                    post_id_match = re.search(r'wall-(\d+)_(\d+)', link_text)
+                    if post_id_match:
+                        post_id = int(post_id_match.group(2))
+                        text = (title.text if title is not None else "") + " " + (description.text if description is not None else "")
+                        
+                        posts.append({
+                            "id": post_id,
+                            "text": text.strip(),
+                            "attachments": []  # RSS не содержит информацию о вложениях
+                        })
+            except Exception as e:
+                logging.debug("Ошибка при парсинге RSS item: %s", e)
+                continue
+        
+        if posts:
+            logging.info("Получено %s пост(ов) через RSS фид VK.", len(posts))
+            return posts
+        else:
+            logging.warning("RSS фид пуст или недоступен. Группа может быть закрытой.")
+            return []
+        
+    except Exception as e:
+        logging.error("Ошибка при получении RSS фида VK: %s", e)
+        logging.warning("Веб-скрапинг VK ограничен - VK использует JavaScript для загрузки постов.")
+        logging.warning("Рекомендуется использовать API с правильным токеном.")
+        return []
 
 
 # ==========================
