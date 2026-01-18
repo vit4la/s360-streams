@@ -92,60 +92,76 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
             logging.error("Не удалось получить доступ к группе. Возможно, вы не участник группы.")
             return []
         
-        # VK загружает посты через JavaScript, поэтому нужно использовать API напрямую
-        # Но с cookies мы можем попробовать использовать мобильную версию или API
-        # Попробуем использовать мобильную версию API VK
+        # Используем мобильную версию VK - она проще для парсинга
+        logging.info("Пробую мобильную версию VK...")
+        mobile_url = f"https://m.vk.com/tennisprimesport"
+        mobile_resp = session.get(mobile_url, timeout=15)
         
         posts = []
         
-        # Пробуем получить посты через мобильный API VK (работает с cookies)
-        try:
-            # Используем мобильный API endpoint
-            api_url = "https://m.vk.com/api/wall.get"
-            api_params = {
-                "owner_id": f"-{VK_GROUP_ID}",
-                "count": POSTS_LIMIT,
-                "v": "5.199"
-            }
-            
-            api_resp = session.get(api_url, params=api_params, timeout=15)
-            if api_resp.status_code == 200:
-                try:
-                    api_data = api_resp.json()
-                    if "response" in api_data and "items" in api_data["response"]:
-                        items = api_data["response"]["items"]
-                        posts = items[:POSTS_LIMIT]
-                        logging.info("✅ Получены посты через мобильный API VK")
-                except json.JSONDecodeError:
-                    logging.debug("Мобильный API не вернул JSON")
-        except Exception as e:
-            logging.debug("Мобильный API не сработал: %s", e)
-        
-        # Если мобильный API не сработал, пробуем парсить HTML/JS
-        if not posts:
-            # Ищем JSON данные в скриптах страницы
-            # VK может хранить данные в разных местах
+        # Пробуем найти данные в мобильной версии
+        if mobile_resp.status_code == 200:
+            # Ищем JSON данные в скриптах
             script_patterns = [
-                re.compile(r'window\.__initialData__\s*=\s*({.*?});', re.DOTALL),
-                re.compile(r'"wall":\s*({.*?"items":\s*\[.*?\]})', re.DOTALL),
-                re.compile(r'var\s+wall\s*=\s*({.*?});', re.DOTALL),
+                re.compile(r'var\s+wall\s*=\s*(\{.*?\});', re.DOTALL),
+                re.compile(r'window\.wall\s*=\s*(\{.*?\});', re.DOTALL),
+                re.compile(r'"wall":\s*(\{.*?"items":\s*\[.*?\]\})', re.DOTALL),
+                re.compile(r'wall\.items\s*=\s*(\[.*?\]);', re.DOTALL),
             ]
             
             for pattern in script_patterns:
-                match = pattern.search(resp.text)
+                match = pattern.search(mobile_resp.text)
                 if match:
                     try:
                         data = json.loads(match.group(1))
-                        # Пробуем разные пути к данным
-                        if "wall" in data and "items" in data["wall"]:
-                            posts = data["wall"]["items"][:POSTS_LIMIT]
-                            break
-                        elif "items" in data:
+                        if "items" in data:
                             posts = data["items"][:POSTS_LIMIT]
+                            logging.info("✅ Найдены посты в JSON данных мобильной версии")
                             break
-                    except (json.JSONDecodeError, KeyError) as e:
+                        elif isinstance(data, list):
+                            posts = data[:POSTS_LIMIT]
+                            logging.info("✅ Найдены посты в массиве мобильной версии")
+                            break
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
                         logging.debug("Ошибка при парсинге JSON: %s", e)
                         continue
+        
+        # Если не нашли в мобильной версии, пробуем парсить HTML мобильной версии
+        if not posts:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(mobile_resp.text, "html.parser")
+            
+            # В мобильной версии посты могут быть в div с классом wall_item
+            post_divs = soup.find_all("div", class_=re.compile(r"wall_item|post", re.I))
+            
+            for div in post_divs[:POSTS_LIMIT]:
+                try:
+                    # Ищем ссылку на пост для получения ID
+                    post_link = div.find("a", href=re.compile(r"wall"))
+                    if post_link:
+                        href = post_link.get("href", "")
+                        post_id_match = re.search(r'wall-?\d+_(\d+)', href)
+                        if post_id_match:
+                            post_id = int(post_id_match.group(1))
+                            
+                            # Извлекаем текст
+                            text_elem = div.find("div", class_=re.compile(r"wall_post_text|post_text", re.I))
+                            text = text_elem.get_text(strip=True) if text_elem else ""
+                            
+                            # Ищем видео
+                            video_link = div.find("a", href=re.compile(r"video"))
+                            attachments = []
+                            if video_link:
+                                attachments.append({"type": "video"})
+                            
+                            posts.append({
+                                "id": post_id,
+                                "text": text,
+                                "attachments": attachments
+                            })
+                except Exception as e:
+                    logging.debug("Ошибка при парсинге HTML поста: %s", e)
+                    continue
         
         # Если все еще не нашли, пробуем парсить HTML напрямую
         if not posts:

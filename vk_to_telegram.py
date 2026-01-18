@@ -117,80 +117,34 @@ def save_state(state: Dict[str, Any]) -> None:
 # ==========================
 
 def get_vk_posts() -> List[Dict[str, Any]]:
-    """Получить последние посты со стены группы VK."""
-    # Используем токен из переменной окружения или глобальной константы
-    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
+    """Получить последние посты со стены группы VK через парсинг с cookies."""
+    # Используем только парсинг с cookies, без API токена
+    logging.info("Использую парсинг с cookies (без API токена)")
     
-    url = "https://api.vk.com/method/wall.get"
-    params = {
-        "access_token": vk_token,
-        "v": VK_API_VERSION,
-        "owner_id": -VK_GROUP_ID,  # у групп в owner_id минус
-        "count": POSTS_LIMIT,
-    }
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
-
-    if "error" in data:
-        error = data["error"]
-        error_code = error.get("error_code", "?")
-        error_msg = error.get("error_msg", "Unknown error")
-        
-        # Пробуем парсинг с cookies при ошибках 5 (токен недействителен) или 15 (доступ запрещен)
-        if error_code in [5, 15]:
-            logging.warning(
-                "VK API ошибка %s: %s. "
-                "Пробую использовать парсинг с авторизацией как fallback...",
-                error_code, error_msg
-            )
-            # Пробуем использовать парсинг с авторизацией как fallback
-            try:
-                # Импортируем функцию парсинга с авторизацией
-                from vk_parser_with_auth import get_vk_posts_with_auth
-                posts = get_vk_posts_with_auth()
-                if posts:
-                    logging.info("✅ Успешно получены посты через парсинг с авторизацией.")
-                    return posts
-                else:
-                    logging.warning("Парсинг с авторизацией не вернул посты. Проверьте cookies в vk_cookies.txt")
-            except ImportError:
-                logging.warning("Модуль vk_parser_with_auth не найден. Пробую RSS...")
-            except Exception as e:
-                logging.error("Парсинг с авторизацией не сработал: %s", e)
-            
-            # Пробуем RSS как последний вариант
-            try:
-                posts = get_vk_posts_scraping()
-                if posts:
-                    logging.info("✅ Успешно получены посты через RSS.")
-                    return posts
-            except Exception as e:
-                logging.error("RSS также не сработал: %s", e)
-            
-            logging.error(
-                "Все методы получения постов не сработали.\n"
-                "Для закрытых групп нужен:\n"
-                "  1. Токен пользователя-участника (через OAuth), ИЛИ\n"
-                "  2. Cookies от авторизованной сессии (см. setup_vk_cookies.md)\n"
-                "См. fix_closed_group.md для подробных инструкций."
-            )
-            # Возвращаем пустой список вместо падения, чтобы сервис продолжал работать
-            logging.warning("Возвращаю пустой список постов. Сервис продолжит работу.")
-            return []
+    try:
+        from vk_parser_with_auth import get_vk_posts_with_auth
+        posts = get_vk_posts_with_auth()
+        if posts:
+            logging.info("✅ Успешно получены посты через парсинг с авторизацией.")
+            return posts
         else:
-            logging.error(
-                "VK API ошибка %s: %s. "
-                "Полная информация: %s",
-                error_code, error_msg, error
-            )
-            # Для других ошибок также возвращаем пустой список вместо падения
-            logging.warning("Возвращаю пустой список постов из-за ошибки API. Сервис продолжит работу.")
-            return []
-
-    items = data.get("response", {}).get("items", [])
-    logging.info("Получено %s пост(ов) из VK.", len(items))
-    return items
+            logging.warning("Парсинг с авторизацией не вернул посты. Проверьте cookies в vk_cookies.txt")
+    except ImportError as e:
+        logging.error("Модуль vk_parser_with_auth не найден: %s", e)
+    except Exception as e:
+        logging.error("Парсинг с авторизацией не сработал: %s", e, exc_info=True)
+    
+    # Пробуем RSS как fallback (только для публичных групп)
+    try:
+        posts = get_vk_posts_scraping()
+        if posts:
+            logging.info("✅ Успешно получены посты через RSS.")
+            return posts
+    except Exception as e:
+        logging.debug("RSS не сработал: %s", e)
+    
+    logging.warning("Не удалось получить посты. Проверьте cookies в vk_cookies.txt")
+    return []
 
 
 def get_vk_posts_scraping() -> List[Dict[str, Any]]:
