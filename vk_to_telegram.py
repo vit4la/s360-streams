@@ -46,7 +46,8 @@ if _env_file.exists():
 # В боевой среде лучше хранить его в переменной окружения или .env
 # Если токен задан в .env или переменной окружения, используем его
 # Иначе можно задать напрямую здесь (для обратной совместимости)
-VK_TOKEN = os.getenv("VK_TOKEN") or "VK_ACCESS_TOKEN"  # Замените на реальный токен если нет в .env
+VK_TOKEN = os.getenv("VK_TOKEN") or "VK_ACCESS_TOKEN"  # Первый токен (основной)
+VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or ""  # Второй токен (fallback)
 
 # Версия VK API
 VK_API_VERSION = "5.199"
@@ -116,19 +117,21 @@ def save_state(state: Dict[str, Any]) -> None:
 # VK API
 # ==========================
 
-def get_vk_posts_via_api() -> List[Dict[str, Any]]:
+def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
     """Получить посты через VK API напрямую (wall.get).
     
     Это самый быстрый и надежный способ для открытых групп.
     """
-    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
-    if not vk_token or vk_token == "VK_ACCESS_TOKEN":
+    if token is None:
+        token = os.getenv("VK_TOKEN") or VK_TOKEN
+    
+    if not token or token == "VK_ACCESS_TOKEN" or token == "":
         return []
     
     try:
         url = "https://api.vk.com/method/wall.get"
         params = {
-            "access_token": vk_token,
+            "access_token": token,
             "v": VK_API_VERSION,
             "owner_id": -VK_GROUP_ID,
             "count": POSTS_LIMIT,
@@ -184,52 +187,25 @@ def get_vk_posts_via_api() -> List[Dict[str, Any]]:
 
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
-    # Приоритет 1: VK API (самый быстрый и надежный для открытых групп)
-    logging.info("Пробую VK API (wall.get)...")
-    posts = get_vk_posts_via_api()
-    if posts:
-        logging.info("✅ Успешно получены посты через VK API.")
-        return posts
-    
-    # Если VK API не работает, пробуем fallback методы только для закрытых групп
-    logging.warning("VK API не сработал. Пробую альтернативные методы (только для закрытых групп)...")
-    
-    # Приоритет 2: простой парсинг с cookies
-    logging.info("Пробую простой парсинг с cookies...")
-    try:
-        from vk_parser_with_auth import get_vk_posts_with_auth
-        posts = get_vk_posts_with_auth()
+    # Пробуем первый токен (основной)
+    logging.info("Пробую VK API с первым токеном (wall.get)...")
+    vk_token_1 = os.getenv("VK_TOKEN") or VK_TOKEN
+    if vk_token_1 and vk_token_1 != "VK_ACCESS_TOKEN" and vk_token_1 != "":
+        posts = get_vk_posts_via_api(vk_token_1)
         if posts:
-            logging.info("✅ Успешно получены посты через парсинг с авторизацией.")
+            logging.info("✅ Успешно получены посты через VK API (первый токен).")
             return posts
-    except ImportError:
-        pass
-    except Exception as e:
-        logging.debug("Парсинг с авторизацией не сработал: %s", e)
     
-    # Приоритет 3: RSS (только для публичных групп)
-    try:
-        posts = get_vk_posts_scraping()
+    # Если первый токен не сработал, пробуем второй токен (fallback)
+    logging.info("Первый токен не сработал, пробую второй токен...")
+    vk_token_2 = os.getenv("VK_TOKEN_2") or VK_TOKEN_2
+    if vk_token_2 and vk_token_2 != "":
+        posts = get_vk_posts_via_api(vk_token_2)
         if posts:
-            logging.info("✅ Успешно получены посты через RSS.")
+            logging.info("✅ Успешно получены посты через VK API (второй токен).")
             return posts
-    except Exception as e:
-        logging.debug("RSS не сработал: %s", e)
     
-    # Selenium только как последний вариант (если группа закрытая и другие методы не работают)
-    logging.info("Пробую Selenium парсер (последний вариант для закрытых групп)...")
-    try:
-        from vk_parser_selenium import get_vk_posts_selenium
-        posts = get_vk_posts_selenium()
-        if posts:
-            logging.info("✅ Успешно получены посты через Selenium.")
-            return posts
-    except ImportError:
-        logging.debug("Selenium не установлен.")
-    except Exception as e:
-        logging.debug("Selenium не сработал: %s", e)
-    
-    logging.error("Не удалось получить посты. Проверьте VK_TOKEN в .env файле. Для открытых групп нужен валидный токен VK API.")
+    logging.error("Не удалось получить посты. Оба токена не сработали. Проверьте VK_TOKEN и VK_TOKEN_2 в .env файле.")
     return []
 
 
