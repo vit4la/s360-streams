@@ -116,9 +116,82 @@ def save_state(state: Dict[str, Any]) -> None:
 # VK API
 # ==========================
 
+def get_vk_posts_via_api() -> List[Dict[str, Any]]:
+    """Получить посты через VK API напрямую (wall.get).
+    
+    Это самый быстрый и надежный способ для открытых групп.
+    """
+    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
+    if not vk_token or vk_token == "VK_ACCESS_TOKEN":
+        return []
+    
+    try:
+        url = "https://api.vk.com/method/wall.get"
+        params = {
+            "access_token": vk_token,
+            "v": VK_API_VERSION,
+            "owner_id": -VK_GROUP_ID,
+            "count": POSTS_LIMIT,
+            "extended": 1,  # Получаем расширенную информацию о вложениях
+        }
+        
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        if "error" in data:
+            error = data["error"]
+            error_code = error.get("error_code", "?")
+            error_msg = error.get("error_msg", "Unknown error")
+            logging.warning("VK API ошибка %s: %s", error_code, error_msg)
+            return []
+        
+        items = data.get("response", {}).get("items", [])
+        if not items:
+            return []
+        
+        # Преобразуем формат VK API в наш формат
+        posts = []
+        for item in items:
+            post_id = item.get("id")
+            text = item.get("text", "")
+            attachments = item.get("attachments", [])
+            
+            # Преобразуем attachments в наш формат
+            formatted_attachments = []
+            for att in attachments:
+                att_type = att.get("type")
+                if att_type == "video":
+                    video = att.get("video", {})
+                    formatted_attachments.append({
+                        "type": "video",
+                        "video": video
+                    })
+            
+            posts.append({
+                "id": post_id,
+                "text": text,
+                "attachments": formatted_attachments
+            })
+        
+        logging.info("Получено %s пост(ов) через VK API.", len(posts))
+        return posts
+        
+    except Exception as e:
+        logging.debug("VK API не сработал: %s", e)
+        return []
+
+
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
-    # Пробуем Selenium (самый надежный способ для обхода защиты VK)
+    # Приоритет 1: VK API (самый быстрый для открытых групп)
+    logging.info("Пробую VK API (wall.get)...")
+    posts = get_vk_posts_via_api()
+    if posts:
+        logging.info("✅ Успешно получены посты через VK API.")
+        return posts
+    
+    # Приоритет 2: Selenium (самый надежный способ для обхода защиты VK)
     logging.info("Пробую Selenium парсер (обход защиты VK)...")
     try:
         from vk_parser_selenium import get_vk_posts_selenium
@@ -131,7 +204,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.warning("Selenium не сработал: %s", e)
     
-    # Fallback: простой парсинг с cookies
+    # Приоритет 3: простой парсинг с cookies
     logging.info("Пробую простой парсинг с cookies...")
     try:
         from vk_parser_with_auth import get_vk_posts_with_auth
@@ -144,7 +217,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("Парсинг с авторизацией не сработал: %s", e)
     
-    # Последний вариант: RSS (только для публичных групп)
+    # Приоритет 4: RSS (только для публичных групп)
     try:
         posts = get_vk_posts_scraping()
         if posts:
@@ -153,7 +226,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("RSS не сработал: %s", e)
     
-    logging.warning("Не удалось получить посты. Установите Selenium для надежной работы.")
+    logging.warning("Не удалось получить посты. Проверьте токен VK или установите Selenium для надежной работы.")
     return []
 
 
