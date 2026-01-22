@@ -184,27 +184,17 @@ def get_vk_posts_via_api() -> List[Dict[str, Any]]:
 
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
-    # Приоритет 1: VK API (самый быстрый для открытых групп)
+    # Приоритет 1: VK API (самый быстрый и надежный для открытых групп)
     logging.info("Пробую VK API (wall.get)...")
     posts = get_vk_posts_via_api()
     if posts:
         logging.info("✅ Успешно получены посты через VK API.")
         return posts
     
-    # Приоритет 2: Selenium (самый надежный способ для обхода защиты VK)
-    logging.info("Пробую Selenium парсер (обход защиты VK)...")
-    try:
-        from vk_parser_selenium import get_vk_posts_selenium
-        posts = get_vk_posts_selenium()
-        if posts:
-            logging.info("✅ Успешно получены посты через Selenium.")
-            return posts
-    except ImportError:
-        logging.debug("Selenium не установлен, пробую простой парсинг...")
-    except Exception as e:
-        logging.warning("Selenium не сработал: %s", e)
+    # Если VK API не работает, пробуем fallback методы только для закрытых групп
+    logging.warning("VK API не сработал. Пробую альтернативные методы (только для закрытых групп)...")
     
-    # Приоритет 3: простой парсинг с cookies
+    # Приоритет 2: простой парсинг с cookies
     logging.info("Пробую простой парсинг с cookies...")
     try:
         from vk_parser_with_auth import get_vk_posts_with_auth
@@ -217,7 +207,7 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("Парсинг с авторизацией не сработал: %s", e)
     
-    # Приоритет 4: RSS (только для публичных групп)
+    # Приоритет 3: RSS (только для публичных групп)
     try:
         posts = get_vk_posts_scraping()
         if posts:
@@ -226,7 +216,20 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("RSS не сработал: %s", e)
     
-    logging.warning("Не удалось получить посты. Проверьте токен VK или установите Selenium для надежной работы.")
+    # Selenium только как последний вариант (если группа закрытая и другие методы не работают)
+    logging.info("Пробую Selenium парсер (последний вариант для закрытых групп)...")
+    try:
+        from vk_parser_selenium import get_vk_posts_selenium
+        posts = get_vk_posts_selenium()
+        if posts:
+            logging.info("✅ Успешно получены посты через Selenium.")
+            return posts
+    except ImportError:
+        logging.debug("Selenium не установлен.")
+    except Exception as e:
+        logging.debug("Selenium не сработал: %s", e)
+    
+    logging.error("Не удалось получить посты. Проверьте VK_TOKEN в .env файле. Для открытых групп нужен валидный токен VK API.")
     return []
 
 

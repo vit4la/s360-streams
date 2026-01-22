@@ -205,10 +205,10 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
                         continue
         
         # Если все еще не нашли, пробуем парсить HTML напрямую
-        if not posts:
+        if not posts and mobile_resp.status_code == 200:
             # Ищем посты по классам (структура может меняться)
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(mobile_resp.text, "html.parser")
             
             # Ищем элементы постов
             post_elements = soup.find_all("div", {"class": re.compile(r".*post.*", re.I)})
