@@ -47,7 +47,7 @@ if _env_file.exists():
 # Если токен задан в .env или переменной окружения, используем его
 # Иначе используем токены по умолчанию (из CONFIG.txt и test_new_token.py)
 VK_TOKEN = os.getenv("VK_TOKEN") or "d165ed0dd165ed0dd165ed0dddd25853dbdd165d165ed0db84a1c02d67d4a7083b2f985"  # Первый токен (основной)
-VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "vk1.a.LSaMaMv9ZuMr9a1VNgV8nbnxcbJ2sTsak-9r-NEzNxvQRH2S37JX3ctrsB1vAnmAAmJRBatzNMHkPnhHXzY-V-MNPiH96istX1cOzcTk3AKr-aWQwymLRILWp0YiZSsWgwolbz2yAFxXygOlvpdV1KjKcWVxzbqHSp-nZ3cL8_x1ceaa51bQPq4h9bRoTW0IUlJKtEpZoZGwMWZCmhuEgg"  # Второй токен (fallback)
+VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "vk1.a.-yUy6kcKUNyit_bix99nMHYPDy0MgJ5qKUhvsWZDS_7nv_VJMi7gM_I5J57AUnixREDBqOjbNb547bt_njqZwSOSr-5X23cFaLIfvegFSeCXSCbIv6jnhMZj9VZBudwVB-cnfX8bmEpDbHnLMj0r_iHGvp8UDjwoqtmHoGnUDss63RywRygeoMlOT9tGCvjg8MbRBXX0bT96s5Zc6vBZJA"  # Второй токен (fallback, получен через OAuth)
 
 # Версия VK API
 VK_API_VERSION = "5.199"
