@@ -187,26 +187,21 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
 
 def get_vk_posts() -> List[Dict[str, Any]]:
     """Получить последние посты со стены группы VK."""
-    # Пробуем первый токен (основной)
-    logging.info("Пробую VK API с первым токеном (wall.get)...")
-    vk_token_1 = os.getenv("VK_TOKEN") or VK_TOKEN
-    if vk_token_1 and vk_token_1 != "VK_ACCESS_TOKEN" and vk_token_1 != "":
-        posts = get_vk_posts_via_api(vk_token_1)
+    # ПРИОРИТЕТ 1: Парсинг с cookies (работал раньше, авторизация успешна)
+    logging.info("Пробую парсинг с cookies (основной метод)...")
+    try:
+        from vk_parser_with_auth import get_vk_posts_with_auth
+        posts = get_vk_posts_with_auth()
         if posts:
-            logging.info("✅ Успешно получены посты через VK API (первый токен).")
+            logging.info("✅ Успешно получены посты через парсинг с cookies.")
             return posts
+    except ImportError:
+        logging.debug("vk_parser_with_auth не найден")
+    except Exception as e:
+        logging.warning("Парсинг с cookies не сработал: %s", e)
     
-    # Если первый токен не сработал, пробуем второй токен (fallback)
-    logging.info("Первый токен не сработал, пробую второй токен...")
-    vk_token_2 = os.getenv("VK_TOKEN_2") or VK_TOKEN_2
-    if vk_token_2 and vk_token_2 != "":
-        posts = get_vk_posts_via_api(vk_token_2)
-        if posts:
-            logging.info("✅ Успешно получены посты через VK API (второй токен).")
-            return posts
-    
-    # Если оба токена не сработали, пробуем RSS (для открытых групп)
-    logging.info("Оба токена не сработали, пробую RSS фид (для открытых групп)...")
+    # ПРИОРИТЕТ 2: RSS (для открытых групп)
+    logging.info("Парсинг с cookies не сработал, пробую RSS фид...")
     try:
         posts = get_vk_posts_scraping()
         if posts:
@@ -215,7 +210,23 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("RSS не сработал: %s", e)
     
-    logging.error("Не удалось получить посты. Оба токена не сработали и RSS недоступен. Группа может быть закрытой или токены недействительны.")
+    # ПРИОРИТЕТ 3: VK API токены (последний вариант, так как не работают)
+    logging.info("RSS не сработал, пробую VK API токены...")
+    vk_token_1 = os.getenv("VK_TOKEN") or VK_TOKEN
+    if vk_token_1 and vk_token_1 != "VK_ACCESS_TOKEN" and vk_token_1 != "":
+        posts = get_vk_posts_via_api(vk_token_1)
+        if posts:
+            logging.info("✅ Успешно получены посты через VK API (первый токен).")
+            return posts
+    
+    vk_token_2 = os.getenv("VK_TOKEN_2") or VK_TOKEN_2
+    if vk_token_2 and vk_token_2 != "":
+        posts = get_vk_posts_via_api(vk_token_2)
+        if posts:
+            logging.info("✅ Успешно получены посты через VK API (второй токен).")
+            return posts
+    
+    logging.error("Не удалось получить посты. Все методы не сработали.")
     return []
 
 
