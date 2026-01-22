@@ -205,7 +205,17 @@ def get_vk_posts() -> List[Dict[str, Any]]:
             logging.info("✅ Успешно получены посты через VK API (второй токен).")
             return posts
     
-    logging.error("Не удалось получить посты. Оба токена не сработали. Проверьте VK_TOKEN и VK_TOKEN_2 в .env файле.")
+    # Если оба токена не сработали, пробуем RSS (для открытых групп)
+    logging.info("Оба токена не сработали, пробую RSS фид (для открытых групп)...")
+    try:
+        posts = get_vk_posts_scraping()
+        if posts:
+            logging.info("✅ Успешно получены посты через RSS фид.")
+            return posts
+    except Exception as e:
+        logging.debug("RSS не сработал: %s", e)
+    
+    logging.error("Не удалось получить посты. Оба токена не сработали и RSS недоступен. Группа может быть закрытой или токены недействительны.")
     return []
 
 
