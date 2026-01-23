@@ -594,7 +594,10 @@ def process_posts() -> None:
     new_last_id = last_id
     for post in posts_sorted:
         post_id = int(post["id"])
+        logging.info("Обрабатываю пост %s, last_id = %s", post_id, last_id)
+        
         if post_id <= last_id:
+            logging.info("Пост %s уже был отправлен (post_id <= last_id), пропускаю", post_id)
             continue
 
         text = post.get("text", "") or ""
