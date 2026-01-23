@@ -515,12 +515,14 @@ def build_post_caption(text: str, video_link: str | None = None) -> str:
     header = "⚡️Новая трансляция от Прайм Теннис"
     
     raw = (text or "").strip()
+    logging.info("build_post_caption: исходный текст = '%s' (длина %s)", raw[:200], len(raw))
+    
     if not raw:
         # Если текста нет, всё равно отправляем заголовок (может быть пост только с картинкой/видео)
         caption = header
         if video_link:
             caption = f"{caption}\n\nВидео: {video_link}"
-        logging.debug("build_post_caption: текст поста пустой, возвращаю только заголовок")
+        logging.warning("build_post_caption: текст поста пустой, возвращаю только заголовок")
         return caption
 
     lines = [line.rstrip() for line in raw.splitlines()]
@@ -531,17 +533,22 @@ def build_post_caption(text: str, video_link: str | None = None) -> str:
 
         # жёсткие исключения по подстрокам
         if "наш telegram - t.me/primetennis".lower() in low:
+            logging.debug("build_post_caption: пропущена строка с t.me/primetennis: %s", line[:50])
             continue
         if "t.me/primetennis".lower() in low:
+            logging.debug("build_post_caption: пропущена строка с t.me/primetennis: %s", line[:50])
             continue
         if "поддержать группу" in low:
+            logging.debug("build_post_caption: пропущена строка с 'поддержать группу': %s", line[:50])
             continue
         if "tips.tips/000457857" in low:
+            logging.debug("build_post_caption: пропущена строка с tips.tips: %s", line[:50])
             continue
 
         cleaned_lines.append(line)
 
     caption = "\n".join(cleaned_lines).strip()
+    logging.info("build_post_caption: после очистки = '%s' (длина %s)", caption[:200], len(caption))
 
     # Добавляем ссылку на видео отдельной строкой
     if video_link:
