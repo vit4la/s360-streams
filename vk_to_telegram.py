@@ -186,47 +186,27 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
 
 
 def get_vk_posts() -> List[Dict[str, Any]]:
-    """Получить последние посты со стены группы VK."""
-    # ПРИОРИТЕТ 1: Парсинг с cookies (работал раньше, авторизация успешна)
-    logging.info("Пробую парсинг с cookies (основной метод)...")
-    try:
-        from vk_parser_with_auth import get_vk_posts_with_auth
-        posts = get_vk_posts_with_auth()
-        if posts:
-            logging.info("✅ Успешно получены посты через парсинг с cookies.")
-            return posts
-    except ImportError:
-        logging.debug("vk_parser_with_auth не найден")
-    except Exception as e:
-        logging.warning("Парсинг с cookies не сработал: %s", e)
-    
-    # ПРИОРИТЕТ 2: RSS (для открытых групп)
-    logging.info("Парсинг с cookies не сработал, пробую RSS фид...")
-    try:
-        posts = get_vk_posts_scraping()
-        if posts:
-            logging.info("✅ Успешно получены посты через RSS фид.")
-            return posts
-    except Exception as e:
-        logging.debug("RSS не сработал: %s", e)
-    
-    # ПРИОРИТЕТ 3: VK API токены
-    logging.info("RSS не сработал, пробую VK API токены...")
+    """Получить последние посты со стены группы VK только через VK API.
+
+    ВАЖНО: никаких cookies, Selenium и RSS — только wall.get с рабочими токенами.
+    """
+    logging.info("Пробую VK API (первый токен)...")
     vk_token_1 = VK_TOKEN
     if vk_token_1:
         posts = get_vk_posts_via_api(vk_token_1)
         if posts:
             logging.info("✅ Успешно получены посты через VK API (первый токен).")
             return posts
-    
+
+    logging.info("Первый токен не сработал, пробую VK API (второй токен)...")
     vk_token_2 = VK_TOKEN_2
     if vk_token_2:
         posts = get_vk_posts_via_api(vk_token_2)
         if posts:
             logging.info("✅ Успешно получены посты через VK API (второй токен).")
             return posts
-    
-    logging.error("Не удалось получить посты. Все методы не сработали.")
+
+    logging.error("Не удалось получить посты через VK API (оба токена не сработали).")
     return []
 
 
