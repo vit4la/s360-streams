@@ -166,22 +166,27 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
             logging.info("VK API post %s: text='%s' (len=%s), attachments=%s, все ключи=%s", 
                         post_id, text[:100], len(text), len(attachments), list(item.keys())[:15])
             
-            # Пробуем найти текст в других полях
-            if not text:
-                copy_text = item.get("copy_text", "")
-                copy_history = item.get("copy_history", [])
-                if copy_text:
-                    logging.info("VK API post %s: найден текст в copy_text: '%s'", post_id, copy_text[:100])
-                    text = copy_text
-                elif copy_history:
-                    logging.info("VK API post %s: найден copy_history с %s элементами", post_id, len(copy_history))
-                    # Берем текст из первого элемента copy_history
-                    if copy_history and isinstance(copy_history[0], dict):
-                        text = copy_history[0].get("text", "") or text
-                        logging.info("VK API post %s: текст из copy_history: '%s'", post_id, text[:100])
+            # Пробуем найти текст в других полях (для репостов)
+            copy_history = item.get("copy_history", [])
+            if not text and copy_history:
+                logging.info("VK API post %s: найден copy_history с %s элементами", post_id, len(copy_history))
+                # Берем текст из первого элемента copy_history
+                if copy_history and isinstance(copy_history[0], dict):
+                    original_post = copy_history[0]
+                    text = original_post.get("text", "") or text
+                    logging.info("VK API post %s: текст из copy_history: '%s'", post_id, text[:100])
+                    
+                    # Извлекаем attachments из copy_history (там могут быть ссылки)
+                    copy_attachments = original_post.get("attachments", [])
+                    if copy_attachments:
+                        logging.info("VK API post %s: найдено %s вложений в copy_history", post_id, len(copy_attachments))
+                        # Добавляем attachments из copy_history к основным
+                        attachments = attachments + copy_attachments
             
-            # Преобразуем attachments в наш формат
+            # Преобразуем attachments в наш формат и извлекаем ссылки
             formatted_attachments = []
+            stream_links = []  # Ссылки на трансляции
+            
             for att in attachments:
                 att_type = att.get("type")
                 if att_type == "video":
@@ -190,11 +195,28 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
                         "type": "video",
                         "video": video
                     })
+                elif att_type == "link":
+                    # Извлекаем ссылку из вложения типа "link"
+                    link_data = att.get("link", {})
+                    link_url = link_data.get("url", "")
+                    if link_url:
+                        stream_links.append(link_url)
+                        logging.info("VK API post %s: найдена ссылка в attachments: %s", post_id, link_url)
+            
+            # Также ищем ссылки в тексте поста (если они там есть)
+            if text:
+                import re
+                url_pattern = re.compile(r'https?://[^\s<>"{}|\\^`\[\]]+', re.IGNORECASE)
+                text_links = url_pattern.findall(text)
+                if text_links:
+                    stream_links.extend(text_links)
+                    logging.info("VK API post %s: найдено %s ссылок в тексте", post_id, len(text_links))
             
             posts.append({
                 "id": post_id,
                 "text": text,
-                "attachments": formatted_attachments
+                "attachments": formatted_attachments,
+                "stream_links": stream_links  # Добавляем ссылки на трансляции
             })
         
         logging.info("Получено %s пост(ов) через VK API.", len(posts))
@@ -520,7 +542,7 @@ def get_first_video_link(attachments: List[Dict[str, Any]]) -> str | None:
     return None
 
 
-def build_post_caption(text: str, video_link: str | None = None) -> str:
+def build_post_caption(text: str, video_link: str | None = None, stream_links: List[str] | None = None) -> str:
     """Формирование подписи для Telegram.
 
     По требованиям берём текст поста почти как есть,
