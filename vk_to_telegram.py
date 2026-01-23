@@ -592,20 +592,28 @@ def build_post_caption(text: str, video_link: str | None = None, stream_links: L
     caption = "\n".join(cleaned_lines).strip()
     logging.info("build_post_caption: после очистки = '%s' (длина %s)", caption[:200], len(caption))
 
-    # Добавляем ссылку на видео отдельной строкой
+    # Добавляем ссылки на трансляции
+    links_to_add = []
     if video_link:
+        links_to_add.append(f"Видео VK: {video_link}")
+    if stream_links:
+        for link in stream_links:
+            links_to_add.append(link)  # Просто добавляем ссылку как есть
+    
+    if links_to_add:
+        links_text = "\n".join(links_to_add)
         if caption:
-            caption = f"{caption}\n\nВидео: {video_link}"
+            caption = f"{caption}\n\n{links_text}"
         else:
-            caption = f"Видео: {video_link}"
+            caption = links_text
 
     # Добавляем заголовок в начало
     if caption:
         caption = f"{header}\n\n{caption}"
     else:
         caption = header
-        if video_link:
-            caption = f"{caption}\n\nВидео: {video_link}"
+        if links_to_add:
+            caption = f"{caption}\n\n{links_text}"
 
     return caption
 
