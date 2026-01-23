@@ -46,8 +46,8 @@ if _env_file.exists():
 # В боевой среде лучше хранить его в переменной окружения или .env
 # Если токен задан в .env или переменной окружения, используем его
 # Иначе используем токены по умолчанию (из CONFIG.txt и test_new_token.py)
-VK_TOKEN = os.getenv("VK_TOKEN") or "d165ed0dd165ed0dd165ed0dddd25853dbdd165d165ed0db84a1c02d67d4a7083b2f985"  # Первый токен (основной)
-VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "vk1.a.-yUy6kcKUNyit_bix99nMHYPDy0MgJ5qKUhvsWZDS_7nv_VJMi7gM_I5J57AUnixREDBqOjbNb547bt_njqZwSOSr-5X23cFaLIfvegFSeCXSCbIv6jnhMZj9VZBudwVB-cnfX8bmEpDbHnLMj0r_iHGvp8UDjwoqtmHoGnUDss63RywRygeoMlOT9tGCvjg8MbRBXX0bT96s5Zc6vBZJA"  # Второй токен (fallback, получен через OAuth)
+VK_TOKEN = os.getenv("VK_TOKEN") or "vk1.a.FPDg_piW9vaMtIrZaYdu4RLwn8MafVdULEVrqjUNUOcFG6QuW696NRH6hMi4AQ1uSC5J7_Pu_bfuuLiY3zXaB9WhJ79YLunyXZb65p6HaUU45xnHOyqJzLtj6l88QOMYcNtuKY5_tOE40NuHXM_iikja-6GeJoPotE2nBpaEsbNhBKOmbb7hotN3btfEZoVXo0cKeZ1Bej6ALG7EVmPtcg"  # Community Token для club235512260 (основной)
+VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "d165ed0dd165ed0dd165ed0dddd25853dbdd165d165ed0db84a1c02d67d4a7083b2f985"  # Старый токен (fallback)
 
 # Версия VK API
 VK_API_VERSION = "5.199"
