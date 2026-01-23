@@ -578,7 +578,7 @@ def process_posts() -> None:
 
     # Первый запуск: просто запоминаем максимальный id и ничего не шлём
     if not initialized:
-        max_id = max(p["id"] for p in posts)
+        max_id = max(p["id"] for p in posts) if posts else 0
         state["last_post_id"] = max_id
         state["initialized"] = True
         save_state(state)
@@ -587,6 +587,8 @@ def process_posts() -> None:
             max_id,
         )
         return
+    
+    logging.info("Обработка постов: last_id=%s, получено постов=%s", last_id, len(posts))
 
     # Идём от старых к новым, чтобы в ТГ хронология была нормальной
     posts_sorted = sorted(posts, key=lambda p: p["id"])
