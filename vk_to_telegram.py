@@ -671,7 +671,9 @@ def process_posts() -> None:
 
         photos = extract_video_preview_urls(attachments)
         video_link = get_first_video_link(attachments)
-        caption = build_post_caption(text, video_link)
+        stream_links = post.get("stream_links", [])  # Получаем ссылки на трансляции
+        logging.info("Пост %s: найдено ссылок на трансляции: %s", post_id, len(stream_links))
+        caption = build_post_caption(text, video_link, stream_links)
         
         # Логируем что получилось в caption
         logging.info("Пост %s: caption = '%s' (длина %s символов), фото = %s", post_id, caption[:150], len(caption), len(photos) if photos else 0)
