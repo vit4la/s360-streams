@@ -372,16 +372,17 @@ def is_broadcast_post(text: str, attachments: List[Dict[str, Any]]) -> bool:
 # ==========================
 
 def send_telegram_media_group(
-    photos: List[str],
-    caption: str,
+    photos_with_links: List[Dict[str, str]],
+    base_caption: str,
     parse_mode: str = "HTML",
 ) -> None:
     """Отправка альбома (медиагруппы) в Telegram.
 
-    В photos ожидается список URL картинок.
-    Подпись ставится только к первой картинке.
+    В photos_with_links ожидается список словарей с ключами 'photo_url' и 'video_url'.
+    Каждая картинка получит свою подпись с соответствующей ссылкой на видео.
+    base_caption (текст поста) добавляется только к первой картинке.
     """
-    if not photos:
+    if not photos_with_links:
         logging.warning("Пустой список фото для отправки в Telegram.")
         return
 
@@ -398,31 +399,45 @@ def send_telegram_media_group(
         chat_id = TELEGRAM_CHAT_ID  # Используем из конфига (может быть число или строка)
 
     # Логируем chat_id для отладки
-    logging.info("Отправка в Telegram: chat_id=%s, фото=%s", chat_id, len(photos))
-
-    # Ограничиваем длину caption (Telegram лимит: 1024 символа)
-    if len(caption) > 1024:
-        caption = caption[:1021] + "..."
-        logging.warning("Подпись обрезана до 1024 символов.")
+    logging.info("Отправка в Telegram: chat_id=%s, фото=%s", chat_id, len(photos_with_links))
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMediaGroup"
 
     media: List[Dict[str, Any]] = []
-    for idx, photo_url in enumerate(photos):
+    for idx, item_data in enumerate(photos_with_links):
+        photo_url = item_data.get("photo_url", "")
+        video_url = item_data.get("video_url", "")
+        
         # Проверяем, что URL не пустой
         if not photo_url or not isinstance(photo_url, str):
             logging.warning("Пропущен невалидный URL фото: %s", photo_url)
             continue
+        
+        # Формируем подпись для этой картинки
+        if idx == 0:
+            # Первая картинка: текст поста + ссылка на видео
+            if video_url:
+                item_caption = f"{base_caption}\n\n{video_url}"
+            else:
+                item_caption = base_caption
+        else:
+            # Остальные картинки: только ссылка на видео
+            item_caption = video_url if video_url else ""
+        
+        # Ограничиваем длину caption (Telegram лимит: 1024 символа)
+        if len(item_caption) > 1024:
+            item_caption = item_caption[:1021] + "..."
+            logging.warning("Подпись для фото %s обрезана до 1024 символов.", idx)
             
-        item: Dict[str, Any] = {
+        media_item: Dict[str, Any] = {
             "type": "photo",
             "media": photo_url,
         }
-        # Подпись и parse_mode — только для первой
-        if idx == 0:
-            item["caption"] = caption
-            item["parse_mode"] = parse_mode
-        media.append(item)
+        # Добавляем подпись только если она не пустая
+        if item_caption:
+            media_item["caption"] = item_caption
+            media_item["parse_mode"] = parse_mode
+        media.append(media_item)
 
     # Если после фильтрации не осталось валидных фото, выходим
     if not media:
@@ -500,37 +515,46 @@ def send_telegram_message(
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ==========================
 
-def extract_video_preview_urls(attachments: List[Dict[str, Any]]) -> List[str]:
-    """Извлечь URL превью-картинок из видео-вложений VK.
+def extract_video_preview_urls(attachments: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Извлечь URL превью-картинок и ссылки на видео из видео-вложений VK.
 
-    Логика:
-    - берём вложения типа 'video';
-    - из объекта video выбираем либо массив image (ищем самый большой размер),
-      либо first_frame_* поля, если они есть.
+    Возвращает список словарей с ключами 'photo_url' и 'video_url'.
     """
-    result: List[str] = []
+    result: List[Dict[str, str]] = []
     for a in attachments:
         if a.get("type") != "video":
             continue
 
         video = a.get("video") or {}
+        
+        # Получаем ссылку на видео
+        owner_id = video.get("owner_id")
+        video_id = video.get("id")
+        video_url = None
+        if owner_id is not None and video_id is not None:
+            video_url = f"https://vk.com/video{owner_id}_{video_id}"
 
         # Вариант 1: поле image — список разных размеров
         images = video.get("image") or []
+        photo_url = None
         if isinstance(images, list) and images:
             # выбираем картинку с максимальной шириной
             best = max(images, key=lambda img: img.get("width", 0))
-            url = best.get("url")
-            if url:
-                result.append(url)
-                continue
-
-        # Вариант 2: first_frame_* поля
-        for key in ("first_frame_800", "first_frame_640", "first_frame_320", "first_frame"):
-            url = video.get(key)
-            if isinstance(url, str) and url:
-                result.append(url)
-                break
+            photo_url = best.get("url")
+        
+        # Вариант 2: first_frame_* поля (если image не сработало)
+        if not photo_url:
+            for key in ("first_frame_800", "first_frame_640", "first_frame_320", "first_frame"):
+                url = video.get(key)
+                if isinstance(url, str) and url:
+                    photo_url = url
+                    break
+        
+        if photo_url:
+            result.append({
+                "photo_url": photo_url,
+                "video_url": video_url or ""
+            })
 
     return result
 
@@ -676,25 +700,29 @@ def process_posts() -> None:
             logging.info("Пост %s пропущен фильтром is_broadcast_post", post_id)
             continue
 
-        photos = extract_video_preview_urls(attachments)
-        video_link = get_first_video_link(attachments)
-        stream_links = post.get("stream_links", [])  # Получаем ссылки на трансляции
-        logging.info("Пост %s: найдено ссылок на трансляции: %s", post_id, len(stream_links))
-        caption = build_post_caption(text, video_link, stream_links)
+        photos_with_links = extract_video_preview_urls(attachments)
+        stream_links = post.get("stream_links", [])  # Получаем ссылки на трансляции (включая не-видео ссылки)
+        logging.info("Пост %s: найдено превью видео: %s, всего ссылок: %s", post_id, len(photos_with_links), len(stream_links))
         
-        # Логируем что получилось в caption
-        logging.info("Пост %s: caption = '%s' (длина %s символов), фото = %s", post_id, caption[:150], len(caption), len(photos) if photos else 0)
+        # Формируем базовую подпись (текст поста + ссылки, которые не относятся к видео)
+        # Ссылки на видео будут добавлены к соответствующим картинкам
+        video_links = [item.get("video_url", "") for item in photos_with_links if item.get("video_url")]
+        non_video_links = [link for link in stream_links if link not in video_links]
+        base_caption = build_post_caption(text, None, non_video_links)
+        
+        # Логируем что получилось
+        logging.info("Пост %s: base_caption = '%s' (длина %s символов), фото с ссылками = %s", 
+                    post_id, base_caption[:150], len(base_caption), len(photos_with_links))
 
         try:
-            if photos:
-                # Есть превью — шлём медиагруппу
-                logging.debug(
-                    "Пост %s: найдено %s превью, первое URL: %s",
+            if photos_with_links:
+                # Есть превью — шлём медиагруппу (каждая картинка со своей ссылкой)
+                logging.info(
+                    "Пост %s: отправляю медиагруппу из %s фото, каждая со своей ссылкой",
                     post_id,
-                    len(photos),
-                    photos[0][:100] if photos else "нет",
+                    len(photos_with_links),
                 )
-                send_telegram_media_group(photos, caption)
+                send_telegram_media_group(photos_with_links, base_caption)
             else:
                 # Нет видео/картинок — шлём просто текст
                 logging.info(
