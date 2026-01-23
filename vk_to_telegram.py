@@ -424,6 +424,49 @@ def send_telegram_media_group(
         raise
 
 
+def send_telegram_message(
+    text: str,
+    parse_mode: str = "HTML",
+) -> None:
+    """Отправка обычного текстового сообщения в Telegram (используем, если нет видео/картинок)."""
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
+    chat_id_env = os.getenv("TELEGRAM_CHAT_ID")
+    if chat_id_env:
+        try:
+            chat_id = int(chat_id_env)
+        except ValueError:
+            chat_id = chat_id_env
+    else:
+        chat_id = TELEGRAM_CHAT_ID
+
+    logging.info("Отправка текстового сообщения в Telegram: chat_id=%s", chat_id)
+
+    if len(text) > 4096:
+        text = text[:4093] + "..."
+        logging.warning("Текст сообщения обрезан до 4096 символов.")
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": parse_mode,
+    }
+
+    try:
+        resp = requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        logging.info("Отправлено текстовое сообщение в Telegram.")
+    except requests.exceptions.HTTPError as e:
+        error_detail = ""
+        try:
+            error_json = resp.json()
+            error_detail = f" | Telegram API ответ: {error_json}"
+        except:
+            error_detail = f" | Ответ сервера: {resp.text[:500]}"
+        logging.error("Ошибка Telegram API при отправке сообщения: %s%s", str(e), error_detail)
+        raise
+
+
 # ==========================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ==========================
@@ -579,13 +622,6 @@ def process_posts() -> None:
             continue
 
         photos = extract_video_preview_urls(attachments)
-        if not photos:
-            logging.info("Пост %s пропущен: не удалось получить превью видео.", post_id)
-            continue
-
-        # Логируем, что нашли для отладки
-        logging.debug("Пост %s: найдено %s превью, первое URL: %s", post_id, len(photos), photos[0][:100] if photos else "нет")
-
         video_link = get_first_video_link(attachments)
         caption = build_post_caption(text, video_link)
         
@@ -593,7 +629,22 @@ def process_posts() -> None:
         logging.debug("Пост %s: длина caption = %s символов", post_id, len(caption))
 
         try:
-            send_telegram_media_group(photos, caption)
+            if photos:
+                # Есть превью — шлём медиагруппу
+                logging.debug(
+                    "Пост %s: найдено %s превью, первое URL: %s",
+                    post_id,
+                    len(photos),
+                    photos[0][:100] if photos else "нет",
+                )
+                send_telegram_media_group(photos, caption)
+            else:
+                # Нет видео/картинок — шлём просто текст
+                logging.info(
+                    "Пост %s: превью видео не найдено, отправляем текстовое сообщение без медиа.",
+                    post_id,
+                )
+                send_telegram_message(caption)
         except Exception:
             # По требованиям — просто логируем и двигаемся дальше
             logging.exception("Ошибка при отправке поста %s в Telegram.", post_id)
@@ -613,10 +664,10 @@ def main() -> None:
     setup_logging()
 
     # Простая проверка заполненности конфигурации
-    # Токены уже загружены из .env в начале файла, проверяем их наличие
-    vk_token = os.getenv("VK_TOKEN") or VK_TOKEN
-    if not vk_token or vk_token == "VK_ACCESS_TOKEN":
-        logging.error("Не задан VK_TOKEN. Добавьте VK_TOKEN в .env файл или задайте в vk_to_telegram.py")
+    # Для надёжности опираемся на жёстко заданный VK_TOKEN, а не на .env
+    vk_token = VK_TOKEN
+    if not vk_token:
+        logging.error("Не задан VK_TOKEN в vk_to_telegram.py")
         return
     
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN") or TELEGRAM_BOT_TOKEN
