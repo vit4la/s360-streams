@@ -136,6 +136,7 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
             "owner_id": -VK_GROUP_ID,
             "count": POSTS_LIMIT,
             "extended": 1,  # Получаем расширенную информацию о вложениях
+            "fields": "text",  # Явно запрашиваем поле text
         }
         
         resp = requests.get(url, params=params, timeout=15)
@@ -157,8 +158,13 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
         posts = []
         for item in items:
             post_id = item.get("id")
-            text = item.get("text", "")
+            # Пробуем получить текст из разных полей
+            text = item.get("text", "") or item.get("copy_text", "") or ""
             attachments = item.get("attachments", [])
+            
+            # Логируем что получили из API для отладки
+            logging.debug("VK API post %s: text='%s' (len=%s), attachments=%s, keys=%s", 
+                        post_id, text[:100], len(text), len(attachments), list(item.keys())[:10])
             
             # Преобразуем attachments в наш формат
             formatted_attachments = []
