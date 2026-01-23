@@ -516,9 +516,11 @@ def build_post_caption(text: str, video_link: str | None = None) -> str:
     
     raw = (text or "").strip()
     if not raw:
+        # Если текста нет, всё равно отправляем заголовок (может быть пост только с картинкой/видео)
         caption = header
         if video_link:
             caption = f"{caption}\n\nВидео: {video_link}"
+        logging.debug("build_post_caption: текст поста пустой, возвращаю только заголовок")
         return caption
 
     lines = [line.rstrip() for line in raw.splitlines()]
@@ -598,15 +600,19 @@ def process_posts() -> None:
         text = post.get("text", "") or ""
         attachments = post.get("attachments") or []
 
+        # Логируем что получили из API
+        logging.info("Пост %s: текст = '%s' (длина %s), вложений = %s", post_id, text[:100], len(text), len(attachments))
+
         if not is_broadcast_post(text, attachments):
+            logging.info("Пост %s пропущен фильтром is_broadcast_post", post_id)
             continue
 
         photos = extract_video_preview_urls(attachments)
         video_link = get_first_video_link(attachments)
         caption = build_post_caption(text, video_link)
         
-        # Логируем длину caption для отладки
-        logging.debug("Пост %s: длина caption = %s символов", post_id, len(caption))
+        # Логируем что получилось в caption
+        logging.info("Пост %s: caption = '%s' (длина %s символов), фото = %s", post_id, caption[:150], len(caption), len(photos) if photos else 0)
 
         try:
             if photos:
