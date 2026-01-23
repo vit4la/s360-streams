@@ -42,12 +42,11 @@ if _env_file.exists():
                 if key not in os.environ:
                     os.environ[key] = value
 
-# Токен VK с правами wall, groups
-# В боевой среде лучше хранить его в переменной окружения или .env
-# Если токен задан в .env или переменной окружения, используем его
-# Иначе используем токены по умолчанию (из CONFIG.txt и test_new_token.py)
-VK_TOKEN = os.getenv("VK_TOKEN") or "vk1.a.FPDg_piW9vaMtIrZaYdu4RLwn8MafVdULEVrqjUNUOcFG6QuW696NRH6hMi4AQ1uSC5J7_Pu_bfuuLiY3zXaB9WhJ79YLunyXZb65p6HaUU45xnHOyqJzLtj6l88QOMYcNtuKY5_tOE40NuHXM_iikja-6GeJoPotE2nBpaEsbNhBKOmbb7hotN3btfEZoVXo0cKeZ1Bej6ALG7EVmPtcg"  # Community Token для club235512260 (основной)
-VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "d165ed0dd165ed0dd165ed0dddd25853dbdd165d165ed0db84a1c02d67d4a7083b2f985"  # Старый токен (fallback)
+# Токены VK с правами wall, groups.
+# ВАЖНО: чтобы не зависеть от кривого .env на сервере, здесь жёстко зашиваем
+# рабочий user‑токен как основной.
+VK_TOKEN = "d165ed0dd165ed0dd165ed0dddd25853dbdd165d165ed0db84a1c02d67d4a7083b2f985"  # Рабочий user‑токен (основной)
+VK_TOKEN_2 = "vk1.a.FPDg_piW9vaMtIrZaYdu4RLwn8MafVdULEVrqjUNUOcFG6QuW696NRH6hMi4AQ1uSC5J7_Pu_bfuuLiY3zXaB9WhJ79YLunyXZb65p6HaUU45xnHOyqJzLtj6l88QOMYcNtuKY5_tOE40NuHXM_iikja-6GeJoPotE2nBpaEsbNhBKOmbb7hotN3btfEZoVXo0cKeZ1Bej6ALG7EVmPtcg"  # Community Token (может не читать wall.get)
 
 # Версия VK API
 VK_API_VERSION = "5.199"
@@ -123,7 +122,8 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
     Это самый быстрый и надежный способ для открытых групп.
     """
     if token is None:
-        token = os.getenv("VK_TOKEN") or VK_TOKEN
+        # Не берём токен из окружения, чтобы не уткнуться в старый/битый .env на сервере
+        token = VK_TOKEN
     
     if not token or token == "VK_ACCESS_TOKEN" or token == "":
         return []
@@ -210,17 +210,17 @@ def get_vk_posts() -> List[Dict[str, Any]]:
     except Exception as e:
         logging.debug("RSS не сработал: %s", e)
     
-    # ПРИОРИТЕТ 3: VK API токены (последний вариант, так как не работают)
+    # ПРИОРИТЕТ 3: VK API токены
     logging.info("RSS не сработал, пробую VK API токены...")
-    vk_token_1 = os.getenv("VK_TOKEN") or VK_TOKEN
-    if vk_token_1 and vk_token_1 != "VK_ACCESS_TOKEN" and vk_token_1 != "":
+    vk_token_1 = VK_TOKEN
+    if vk_token_1:
         posts = get_vk_posts_via_api(vk_token_1)
         if posts:
             logging.info("✅ Успешно получены посты через VK API (первый токен).")
             return posts
     
-    vk_token_2 = os.getenv("VK_TOKEN_2") or VK_TOKEN_2
-    if vk_token_2 and vk_token_2 != "":
+    vk_token_2 = VK_TOKEN_2
+    if vk_token_2:
         posts = get_vk_posts_via_api(vk_token_2)
         if posts:
             logging.info("✅ Успешно получены посты через VK API (второй токен).")
@@ -237,7 +237,9 @@ def get_vk_posts_scraping() -> List[Dict[str, Any]]:
     """
     try:
         # Пробуем RSS фид VK (работает для публичных групп)
-        rss_url = f"https://vk.com/rss.php?domain=tennisprimesport"
+        # Определяем домен группы из VK_GROUP_ID/URL
+        group_domain = f"club{VK_GROUP_ID}"
+        rss_url = f"https://vk.com/rss.php?domain={group_domain}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
@@ -328,28 +330,12 @@ def count_flag_emojis(text: str) -> int:
 def is_broadcast_post(text: str, attachments: List[Dict[str, Any]]) -> bool:
     """Определение, является ли пост трансляцией.
 
-    Критерии:
-    - есть хотя бы одно видео-вложение;
-    - в тексте есть одно из ключевых слов по турнирам/ассоциациям
-      ИЛИ в тексте хотя бы 2 флага и знак '-' между ними.
+    УПРОЩЁННАЯ ВЕРСИЯ:
+    Сейчас для новой группы club235512260 шлём **любой** новый пост в Telegram,
+    без обязательного видео и ключевых слов, чтобы сервис просто снова работал.
+    При необходимости фильтрацию можно ужесточить позже.
     """
-    has_video = any(a.get("type") == "video" for a in attachments)
-    if not has_video:
-        return False
-
-    lower_text = text.lower()
-
-    # Проверка ключевых слов
-    for kw in TOURNAMENT_KEYWORDS:
-        if kw.lower() in lower_text:
-            return True
-
-    # Проверка шаблона с флагами и тире
-    flags_count = count_flag_emojis(text)
-    if flags_count >= 2 and "-" in text:
-        return True
-
-    return False
+    return True
 
 
 # ==========================
