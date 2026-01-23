@@ -195,13 +195,20 @@ def get_vk_posts_via_api(token: str = None) -> List[Dict[str, Any]]:
                         "type": "video",
                         "video": video
                     })
+                    # Извлекаем ссылку на видео VK
+                    owner_id = video.get("owner_id")
+                    video_id = video.get("id")
+                    if owner_id is not None and video_id is not None:
+                        video_url = f"https://vk.com/video{owner_id}_{video_id}"
+                        stream_links.append(video_url)
+                        logging.info("VK API post %s: найдена ссылка на видео VK: %s", post_id, video_url)
                 elif att_type == "link":
                     # Извлекаем ссылку из вложения типа "link"
                     link_data = att.get("link", {})
                     link_url = link_data.get("url", "")
                     if link_url:
                         stream_links.append(link_url)
-                        logging.info("VK API post %s: найдена ссылка в attachments: %s", post_id, link_url)
+                        logging.info("VK API post %s: найдена ссылка в attachments (link): %s", post_id, link_url)
             
             # Также ищем ссылки в тексте поста (если они там есть)
             if text:
