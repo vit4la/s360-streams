@@ -95,7 +95,10 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
         
         # Загружаем страницу группы (мобильная версия)
         logging.info("Загружаю мобильную версию группы...")
-        mobile_url = f"https://m.vk.com/tennisprimesport"
+        # Определяем домен группы из VK_GROUP_URL, например club235512260
+        group_match = re.search(r"/([^/]+)$", VK_GROUP_URL)
+        group_domain = group_match.group(1) if group_match else f"club{VK_GROUP_ID}"
+        mobile_url = f"https://m.vk.com/{group_domain}"
         mobile_resp = session.get(mobile_url, timeout=20, allow_redirects=True)
         
         # Проверяем, что мы на странице группы (не редирект на логин)
@@ -106,14 +109,14 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
             return []
         
         # Проверяем, что мы на правильной странице
-        if "tennisprimesport" not in mobile_resp.url.lower() and "wall" not in mobile_resp.text.lower():
+        if group_domain.lower() not in mobile_resp.url.lower() and "wall" not in mobile_resp.text.lower():
             logging.warning("Странная страница получена, но продолжаю парсинг...")
         
         logging.info("✅ Страница группы загружена, начинаю парсинг...")
         
         # Используем мобильную версию VK - она проще для парсинга
         logging.info("Пробую мобильную версию VK...")
-        mobile_url = f"https://m.vk.com/tennisprimesport"
+        mobile_url = f"https://m.vk.com/{group_domain}"
         if "m.vk.com" not in mobile_resp.url:
             # Если еще не загрузили мобильную версию, загружаем
             mobile_resp = session.get(mobile_url, timeout=20)
