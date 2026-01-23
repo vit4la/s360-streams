@@ -53,8 +53,8 @@ VK_TOKEN_2 = os.getenv("VK_TOKEN_2") or "vk1.a.-yUy6kcKUNyit_bix99nMHYPDy0MgJ5qK
 VK_API_VERSION = "5.199"
 
 # ID группы VK (без минуса), например 123456789
-# Для tennisprimesport это 212808533
-VK_GROUP_ID = 212808533
+# Новая группа: club235512260 (вы — админ, из неё и парсим)
+VK_GROUP_ID = 235512260
 
 # Сколько последних постов запрашивать за один заход
 POSTS_LIMIT = 20

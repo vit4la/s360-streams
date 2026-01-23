@@ -15,12 +15,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-VK_GROUP_ID = 212808533
+VK_GROUP_ID = 235512260
 
 print("="*70)
 print("ТЕСТИРОВАНИЕ ПАРСИНГА VK ГРУППЫ")
 print("="*70)
-print(f"Группа: tennisprimesport (ID: {VK_GROUP_ID})")
+print(f"Группа: club235512260 (ID: {VK_GROUP_ID})")
 print()
 
 # Загружаем токены из .env если есть

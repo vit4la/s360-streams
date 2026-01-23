@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 import requests
 
 # Настройки
-VK_GROUP_ID = 212808533
-VK_GROUP_URL = "https://vk.com/tennisprimesport"
+VK_GROUP_ID = 235512260
+VK_GROUP_URL = "https://vk.com/club235512260"
 STATE_FILE = Path("vk_last_post_state.json")
 POSTS_LIMIT = 20
 
@@ -114,7 +114,9 @@ def get_vk_posts_with_auth() -> List[Dict[str, Any]]:
         # Используем мобильную версию VK - она проще для парсинга
         logging.info("Пробую мобильную версию VK...")
         mobile_url = f"https://m.vk.com/tennisprimesport"
-        mobile_resp = session.get(mobile_url, timeout=20)
+        if "m.vk.com" not in mobile_resp.url:
+            # Если еще не загрузили мобильную версию, загружаем
+            mobile_resp = session.get(mobile_url, timeout=20)
         
         posts = []
         

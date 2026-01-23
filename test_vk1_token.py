@@ -9,13 +9,13 @@ import requests
 # Токен должен начинаться с vk1.a. и быть полным (не обрезанным)
 NEW_TOKEN = "vk1.a.ВСТАВЬТЕ_ПОЛНЫЙ_ТОКЕН_ЗДЕСЬ"
 
-VK_GROUP_ID = 212808533
+VK_GROUP_ID = 235512260
 VK_API_VERSION = "5.199"
 
 print("="*70)
 print("ПРОВЕРКА ТОКЕНА ФОРМАТА vk1.a. ДЛЯ wall.get")
 print("="*70)
-print(f"Группа: tennisprimesport (ID: {VK_GROUP_ID})")
+print(f"Группа: club235512260 (ID: {VK_GROUP_ID})")
 print(f"Токен: {NEW_TOKEN[:50]}...")
 print()
 

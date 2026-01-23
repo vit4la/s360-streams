@@ -14,8 +14,8 @@ import requests
 from bs4 import BeautifulSoup
 
 # Настройки
-VK_GROUP_ID = 212808533
-VK_GROUP_URL = "https://vk.com/tennisprimesport"
+VK_GROUP_ID = 235512260
+VK_GROUP_URL = "https://vk.com/club235512260"
 STATE_FILE = Path("vk_last_post_state.json")
 POSTS_LIMIT = 20
 

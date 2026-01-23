@@ -7,8 +7,8 @@ import requests
 import xml.etree.ElementTree as ET
 import re
 
-VK_GROUP_DOMAIN = "tennisprimesport"
-VK_GROUP_ID = 212808533
+VK_GROUP_DOMAIN = "club235512260"
+VK_GROUP_ID = 235512260
 
 print("="*70)
 print("ПРОВЕРКА RSS ФИДА VK")
