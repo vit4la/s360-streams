@@ -486,26 +486,6 @@ def extract_video_preview_urls(attachments: List[Dict[str, Any]]) -> List[str]:
     return result
 
 
-def extract_links_from_text(text: str) -> List[str]:
-    """Извлечь все URL-ссылки из текста поста (трансляции, YouTube, Twitch и т.д.)."""
-    if not text:
-        return []
-    
-    # Регулярное выражение для поиска URL
-    url_pattern = re.compile(
-        r'https?://'  # http:// или https://
-        r'(?:[-\w.])+'  # домен
-        r'(?::[0-9]+)?'  # опциональный порт
-        r'(?:/(?:[\w/_.])*)?'  # путь
-        r'(?:\?(?:[\w&=%.])*)?'  # query параметры
-        r'(?:#(?:[\w.])*)?',  # fragment
-        re.IGNORECASE
-    )
-    
-    links = url_pattern.findall(text)
-    return links
-
-
 def get_first_video_link(attachments: List[Dict[str, Any]]) -> str | None:
     """Получить прямую ссылку на первое видео из вложений VK."""
     for a in attachments:
@@ -520,7 +500,7 @@ def get_first_video_link(attachments: List[Dict[str, Any]]) -> str | None:
     return None
 
 
-def build_post_caption(text: str, video_link: str | None = None, stream_links: List[str] | None = None) -> str:
+def build_post_caption(text: str, video_link: str | None = None) -> str:
     """Формирование подписи для Telegram.
 
     По требованиям берём текст поста почти как есть,
@@ -563,34 +543,20 @@ def build_post_caption(text: str, video_link: str | None = None, stream_links: L
 
     caption = "\n".join(cleaned_lines).strip()
 
-    # Добавляем ссылки на трансляции
-    links_to_add = []
+    # Добавляем ссылку на видео отдельной строкой
     if video_link:
-        links_to_add.append(f"Видео VK: {video_link}")
-    if stream_links:
-        for link in stream_links:
-            # Определяем тип ссылки для красивого отображения
-            if "youtube.com" in link or "youtu.be" in link:
-                links_to_add.append(f"🎥 YouTube: {link}")
-            elif "twitch.tv" in link:
-                links_to_add.append(f"🎮 Twitch: {link}")
-            else:
-                links_to_add.append(f"🔗 Трансляция: {link}")
-    
-    if links_to_add:
-        links_text = "\n".join(links_to_add)
         if caption:
-            caption = f"{caption}\n\n{links_text}"
+            caption = f"{caption}\n\nВидео: {video_link}"
         else:
-            caption = links_text
+            caption = f"Видео: {video_link}"
 
     # Добавляем заголовок в начало
     if caption:
         caption = f"{header}\n\n{caption}"
     else:
         caption = header
-        if links_to_add:
-            caption = f"{caption}\n\n{links_text}"
+        if video_link:
+            caption = f"{caption}\n\nВидео: {video_link}"
 
     return caption
 
@@ -641,15 +607,9 @@ def process_posts() -> None:
             logging.info("Пост %s пропущен фильтром is_broadcast_post", post_id)
             continue
 
-        # Извлекаем ссылки на трансляции из текста поста
-        stream_links = extract_links_from_text(text)
-        logging.info("Пост %s: найдено ссылок в тексте: %s", post_id, len(stream_links))
-        if stream_links:
-            logging.info("Пост %s: ссылки: %s", post_id, stream_links[:3])  # Показываем первые 3
-        
         photos = extract_video_preview_urls(attachments)
         video_link = get_first_video_link(attachments)
-        caption = build_post_caption(text, video_link, stream_links)
+        caption = build_post_caption(text, video_link)
         
         # Логируем что получилось в caption
         logging.info("Пост %s: caption = '%s' (длина %s символов), фото = %s", post_id, caption[:150], len(caption), len(photos) if photos else 0)
